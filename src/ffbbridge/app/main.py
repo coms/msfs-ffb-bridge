@@ -121,30 +121,67 @@ def command_simulate(args: argparse.Namespace) -> int:
     flight = SyntheticFlight()
     wheel = WheelState(position=args.wheel, connected=True)
 
-    rows = []
-    for telemetry in flight.stream():
-        result = engine.tick(telemetry, wheel, telemetry.t)
-        rows.append((telemetry, result))
+    rows = [
+        (telemetry, engine.tick(telemetry, wheel, telemetry.t)) for telemetry in flight.stream()
+    ]
+    return _report_run(rows, "scripted flight", args.csv)
 
-    if args.csv:
-        _write_trace(Path(args.csv), rows)
-        print(f"Wrote {len(rows)} samples to {args.csv}")
 
-    print(f"\nFlew {flight.duration:.0f} s of scripted flight, {len(rows)} ticks.\n")
+def command_replay(args: argparse.Namespace) -> int:
+    """Run a recorded flight back through the force model.
+
+    Record once, then replay as often as you like with different settings. It is
+    also how a flight can be handed to someone else to look at.
+    """
+    from ..core.recording import read_recording, recording_header
+
+    path = Path(args.recording)
+    if not path.is_file():
+        print(f"No such recording: {path}")
+        return 1
+
+    header = recording_header(path)
+    if header.get("note"):
+        print(f"Recording note: {header['note']}")
+
+    profiles = load_profiles(args.config)
+    engine = BridgeEngine(profiles)
+    wheel = WheelState(position=args.wheel, connected=True)
+    rows = [
+        (telemetry, engine.tick(telemetry, wheel, telemetry.t))
+        for telemetry in read_recording(path)
+    ]
+    if not rows:
+        print("The recording contained no samples.")
+        return 1
+    return _report_run(rows, str(path), args.csv)
+
+
+def _report_run(rows, source: str, csv_path: str | None) -> int:
+    """Summarise a run of the force model, and optionally write the full trace."""
+    if csv_path:
+        _write_trace(Path(csv_path), rows)
+        print(f"Wrote {len(rows)} samples to {csv_path}")
+
+    duration = rows[-1][0].t - rows[0][0].t
+    print(f"\nRan {duration:.0f} s of {source}, {len(rows)} ticks.\n")
     print(f"{'time':>7} {'phase':>10} {'gs':>6} {'force':>7} {'spring':>7}  effects")
-    for seconds in range(0, int(flight.duration), 20):
-        telemetry, result = min(rows, key=lambda pair: abs(pair[0].t - seconds))
+
+    step = max(duration / 16.0, 1.0)
+    marker = rows[0][0].t
+    while marker <= rows[-1][0].t:
+        telemetry, result = min(rows, key=lambda pair: abs(pair[0].t - marker))
         spring = result.force.spring.coefficient if result.force.spring else 0.0
         effects = ",".join(p.label for p in result.force.periodics)
         print(
             f"{telemetry.t:7.1f} {result.context.mode.value:>10} {telemetry.gs_kt:6.1f} "
             f"{result.force.constant:+7.3f} {spring:7.3f}  {effects}"
         )
+        marker += step
 
     peak = max(rows, key=lambda pair: abs(pair[1].force.constant))
     print(f"\nPeak steady force {peak[1].force.constant:+.3f} at t={peak[0].t:.1f}s")
-    clipped = sum(1 for _, result in rows if result.force.clipped)
-    print(f"Ticks at the force ceiling: {clipped}")
+    print(f"Ticks at the force ceiling: {sum(1 for _, r in rows if r.force.clipped)}")
     return 0
 
 
@@ -271,6 +308,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--wheel", type=float, default=0.0, help="hold the wheel at this position"
     )
     simulate_parser.set_defaults(func=command_simulate)
+
+    replay_parser = subparsers.add_parser(
+        "replay", help="run a recorded flight back through the force model"
+    )
+    replay_parser.add_argument("recording", help="a .jsonl recording")
+    replay_parser.add_argument("--csv", help="write the full force trace here")
+    replay_parser.add_argument(
+        "--wheel", type=float, default=0.0, help="hold the wheel at this position"
+    )
+    replay_parser.set_defaults(func=command_replay)
 
     return parser
 

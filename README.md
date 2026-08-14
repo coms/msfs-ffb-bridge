@@ -94,6 +94,12 @@ Two things to do before the first flight:
 
 Then [tuning](docs/tuning.md) — every slider applies while you fly.
 
+Record a flight and replay it as often as you like with different settings:
+
+```
+ffbbridge replay flight.jsonl.gz --csv trace.csv
+```
+
 `ffbbridge simulate --csv trace.csv` flies a scripted sortie through the force model with
 no simulator and no hardware, which is the quickest way to see what a change actually did.
 

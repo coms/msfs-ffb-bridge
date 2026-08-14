@@ -60,6 +60,8 @@ class GuiApp:
                     self._build_tuning_tab()
                 with dpg.tab(label="Bench test"):
                     self._build_bench_tab()
+                with dpg.tab(label="Recordings"):
+                    self._build_recording_tab()
                 with dpg.tab(label="Diagnostics"):
                     self._build_diagnostics_tab()
 
@@ -222,6 +224,32 @@ class GuiApp:
         dpg.add_button(label="Stop", callback=lambda: self._stop_bench(), width=220)
         dpg.add_text("", tag="bench_status")
 
+    def _build_recording_tab(self) -> None:
+        dpg.add_text(
+            "Record a flight and it can be replayed through the force model as often as "
+            "you like, with different settings, without going near an aircraft. It can "
+            "also be handed to someone else to look at.",
+            wrap=1000,
+            color=COLOUR_DIM,
+        )
+        dpg.add_separator()
+        dpg.add_input_text(
+            tag="recording_note",
+            label="note",
+            hint="what to remember about this flight, e.g. 'gusty, grass strip'",
+            width=560,
+        )
+        with dpg.group(horizontal=True):
+            dpg.add_button(label="Start recording", callback=self._on_record, width=180)
+            dpg.add_button(label="Stop recording", callback=self._on_stop_record, width=180)
+        dpg.add_text("Not recording.", tag="recording_status")
+        dpg.add_separator()
+        dpg.add_text(f"Recordings are written to {paths.recordings_dir()}", color=COLOUR_DIM)
+        dpg.add_text(
+            "Replay one from a terminal with:  ffbbridge replay <file> --csv trace.csv",
+            color=COLOUR_DIM,
+        )
+
     def _build_diagnostics_tab(self) -> None:
         dpg.add_button(label="Run checks", callback=self._on_doctor)
         dpg.add_separator()
@@ -311,6 +339,16 @@ class GuiApp:
         self.runtime.apply_config(
             profiles.default.with_module_defaults(self.runtime.engine.default_module_settings())
         )
+
+    def _on_record(self) -> None:
+        from datetime import datetime
+
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        path = paths.recordings_dir() / f"flight-{stamp}.jsonl.gz"
+        self.runtime.start_recording(path, note=dpg.get_value("recording_note") or "")
+
+    def _on_stop_record(self) -> None:
+        self.runtime.stop_recording()
 
     def _on_doctor(self) -> None:
         dpg.set_value("doctor_output", format_report(run_checks(self.runtime.engine.config)))
@@ -410,6 +448,13 @@ class GuiApp:
             )
 
     def _refresh_diagnostics(self, s: RuntimeSnapshot) -> None:
+        if s.recording_path:
+            dpg.set_value(
+                "recording_status",
+                f"Recording {s.recorded_samples} samples to {s.recording_path}",
+            )
+        elif dpg.get_value("recording_status").startswith("Recording "):
+            dpg.set_value("recording_status", "Stopped.")
         dpg.set_value("doctor_missing", ", ".join(s.unavailable_vars) or "none")
         dpg.set_value(
             "doctor_errors",

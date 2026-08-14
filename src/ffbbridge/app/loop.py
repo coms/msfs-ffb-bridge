@@ -25,6 +25,7 @@ from ..core.config import BridgeConfig, ProfileSet
 from ..core.context import AxisMode
 from ..core.engine import BridgeEngine, EngineResult
 from ..core.forces import ZERO_FORCE, ForceOutput
+from ..core.recording import TelemetryRecorder
 from ..core.routing import AxisCommand, OverrideState
 from ..core.telemetry import FlightTelemetry, WheelState
 from ..io.axis_out import AxisOutput
@@ -69,6 +70,8 @@ class RuntimeSnapshot:
     software_labels: tuple[str, ...] = ()
     unavailable_vars: tuple[str, ...] = ()
     module_errors: dict[str, str] = field(default_factory=dict)
+    recording_path: str = ""
+    recorded_samples: int = 0
 
 
 class BridgeRuntime:
@@ -96,6 +99,8 @@ class BridgeRuntime:
         self._haptic: HapticOutput | None = None
         self._wheel_reader: WheelReader | None = None
         self._bench: Callable[[float], ForceOutput] | None = None
+        self._recorder: TelemetryRecorder | None = None
+        self._last_recorded_t = -1.0
 
     # --- Public, callable from any thread ---------------------------------
 
@@ -161,6 +166,46 @@ class BridgeRuntime:
 
         self.post(apply)
 
+    def start_recording(self, path: Path, *, note: str = "") -> None:
+        """Begin writing telemetry to a file for later replay."""
+
+        def apply() -> None:
+            self._stop_recording_now()
+            recorder = TelemetryRecorder(path, note=note)
+            try:
+                recorder.open()
+            except OSError as exc:
+                LOGGER.error("could not start recording: %s", exc)
+                return
+            self._recorder = recorder
+            self._last_recorded_t = -1.0
+            LOGGER.info("recording to %s", path)
+
+        self.post(apply)
+
+    def stop_recording(self) -> None:
+        self.post(self._stop_recording_now)
+
+    def _stop_recording_now(self) -> None:
+        if self._recorder is None:
+            return
+        LOGGER.info("recorded %d samples to %s", self._recorder.samples, self._recorder.path)
+        self._recorder.close()
+        self._recorder = None
+
+    def _record(self, telemetry: FlightTelemetry) -> None:
+        """Write each distinct sample once.
+
+        The loop runs faster than telemetry arrives, so without the timestamp
+        check a recording would be mostly duplicates.
+        """
+        if self._recorder is None or not telemetry.connected:
+            return
+        if telemetry.t == self._last_recorded_t:
+            return
+        self._last_recorded_t = telemetry.t
+        self._recorder.write(telemetry)
+
     # --- The loop ---------------------------------------------------------
 
     def _run(self) -> None:
@@ -200,6 +245,7 @@ class BridgeRuntime:
             self._sim.pump(now)
             wheel = self._read_wheel(period)
             telemetry = self._sim.latest or FlightTelemetry(connected=False)
+            self._record(telemetry)
             result = self.engine.tick(telemetry, wheel, now)
             force = self._output_force(result, now)
             self._send_axes(result, now)
@@ -340,6 +386,8 @@ class BridgeRuntime:
             software_labels=mixer.diagnostics.software_periodics if mixer else (),
             unavailable_vars=tuple(self._sim.status.unavailable_vars),
             module_errors=dict(self.engine.status.module_errors),
+            recording_path=str(self._recorder.path) if self._recorder else "",
+            recorded_samples=self._recorder.samples if self._recorder else 0,
         )
         with self._lock:
             self._snapshot = snapshot
@@ -367,6 +415,8 @@ class BridgeRuntime:
 
     def _teardown(self) -> None:
         LOGGER.info("releasing the wheel and closing the connection")
+        with contextlib.suppress(Exception):
+            self._stop_recording_now()
         self._close_device()
         with contextlib.suppress(Exception):
             self._sim.close()
