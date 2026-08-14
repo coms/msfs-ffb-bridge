@@ -15,7 +15,7 @@ from enum import StrEnum
 
 from ..core.config import BridgeConfig
 from ..io.ffb_sdl import HapticCapabilities, init_sdl, list_devices, select_device
-from ..io.simconnect_client import find_simconnect_dll
+from ..io.simconnect_client import find_simconnect_dll, simconnect_search_paths
 
 
 class Level(StrEnum):
@@ -182,18 +182,22 @@ def describe_capabilities(capabilities: HapticCapabilities) -> list[Finding]:
 
 def _check_simconnect(config: BridgeConfig) -> list[Finding]:
     path = find_simconnect_dll(config.device.simconnect_dll)
-    if path is None:
-        return [
-            Finding(
-                Level.FAIL,
-                "SimConnect",
-                "SimConnect.dll was not found in any of the usual places.",
-                "Install the free MSFS SDK from inside the simulator, or run "
-                "'pip install SimConnect' to obtain the DLL, or set its path in "
-                "the configuration.",
-            )
-        ]
-    return [Finding(Level.OK, "SimConnect", f"found {path}.")]
+    if path is not None:
+        return [Finding(Level.OK, "SimConnect", f"found {path}.")]
+
+    looked = simconnect_search_paths(config.device.simconnect_dll)
+    return [
+        Finding(
+            Level.FAIL,
+            "SimConnect",
+            "SimConnect.dll was not found. Looked in:\n        "
+            + "\n        ".join(str(candidate) for candidate in looked),
+            "Search your drive for SimConnect.dll and put a copy next to the "
+            "bridge, or set device.simconnect_dll in the profile to point at it. "
+            "Failing that, enable Developer Mode in the simulator and install the "
+            "free SDK from its Help menu.",
+        )
+    ]
 
 
 def _pit_house_reminder() -> Finding:

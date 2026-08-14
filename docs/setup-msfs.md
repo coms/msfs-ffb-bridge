@@ -70,3 +70,16 @@ driving stop moving.
 
 If the forces feel too weak or too strong, that is the master strength slider,
 and it is meant to be moved while flying. See [tuning](tuning.md).
+
+## If SimConnect.dll cannot be found
+
+`ffbbridge doctor` lists every path it checked. The DLL is almost certainly
+already on your machine — the simulator ships one, and so does the SDK. Search
+your drive for `SimConnect.dll`, then either copy it next to `ffbbridge.exe` or
+point the profile at it:
+
+```json
+{ "default": { "device": { "simconnect_dll": "C:\\path\\to\\SimConnect.dll" } } }
+```
+
+The profile lives in `%LOCALAPPDATA%\msfs-ffb-bridge\profiles.json`.

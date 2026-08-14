@@ -138,11 +138,11 @@ class SIMCONNECT_RECV_SIMOBJECT_DATA(ctypes.Structure):
     ]
 
 
-def find_simconnect_dll(explicit: str = "") -> Path | None:
-    """Locate SimConnect.dll without making the user hunt for it.
+def simconnect_search_paths(explicit: str = "") -> list[Path]:
+    """Everywhere the DLL might be, in order of how likely each is to be right.
 
-    Checked in order of how likely they are to be right, and reported by the
-    doctor when none of them pans out.
+    Exposed separately so the doctor can show exactly where it looked rather
+    than just reporting a failure.
     """
     candidates: list[Path] = []
     if explicit:
@@ -165,19 +165,68 @@ def find_simconnect_dll(explicit: str = "") -> Path | None:
     except Exception:  # noqa: BLE001 - absence is the normal case
         pass
 
-    # An installed MSFS SDK.
+    # An installed MSFS SDK, either by environment variable or at the path its
+    # installer defaults to.
     for variable in ("MSFS2024_SDK", "MSFS_SDK"):
         root = os.environ.get(variable)
         if root:
             candidates.append(Path(root) / "SimConnect SDK" / "lib" / "SimConnect.dll")
+    for root in (r"C:\MSFS 2024 SDK", r"C:\MSFS SDK"):
+        candidates.append(Path(root) / "SimConnect SDK" / "lib" / "SimConnect.dll")
 
-    for path in candidates:
+    candidates.extend(_simulator_install_candidates())
+    return candidates
+
+
+def find_simconnect_dll(explicit: str = "") -> Path | None:
+    """The first place the DLL actually turns up, or None."""
+    for path in simconnect_search_paths(explicit):
         try:
             if path.is_file():
                 return path
         except OSError:
             continue
     return None
+
+
+def _simulator_install_candidates() -> list[Path]:
+    """Places the simulator's own copy of the DLL tends to sit.
+
+    Worth searching before asking anyone to install a software development kit
+    to fly an aeroplane: if the simulator is on the machine, the library usually
+    already is too.
+    """
+    candidates: list[Path] = []
+    program_files = [
+        os.environ.get("PROGRAMFILES", r"C:\Program Files"),
+        os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)"),
+    ]
+    steam_libraries = [
+        Path(base) / "Steam" / "steamapps" / "common" for base in program_files if base
+    ]
+    steam_libraries.append(Path(r"C:\SteamLibrary\steamapps\common"))
+    # Steam has used both spellings across the two titles, and a wrong guess
+    # only costs a path that does not exist.
+    for library in steam_libraries:
+        for title in (
+            "Microsoft Flight Simulator 2024",
+            "MicrosoftFlightSimulator2024",
+            "Microsoft Flight Simulator",
+            "MicrosoftFlightSimulator",
+        ):
+            candidates.append(library / title / "SimConnect.dll")
+
+    local = os.environ.get("LOCALAPPDATA")
+    if local:
+        packages = Path(local) / "Packages"
+        for package in (
+            "Microsoft.Limitless_8wekyb3d8bbwe",  # MSFS 2024, Microsoft Store
+            "Microsoft.FlightSimulator_8wekyb3d8bbwe",  # MSFS 2020, Microsoft Store
+        ):
+            candidates.append(packages / package / "LocalCache" / "SimConnect.dll")
+            candidates.append(packages / package / "LocalState" / "SimConnect.dll")
+
+    return candidates
 
 
 @dataclass(slots=True)
