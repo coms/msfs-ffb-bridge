@@ -232,12 +232,14 @@ class FlightTelemetry:
 
     @property
     def crosswind_kt(self) -> float:
-        """Crosswind component, positive from the right.
+        """Crosswind component, positive when the wind comes from the right.
 
-        Wind direction is where the wind blows *from*, so the component along the
-        aircraft's right wing is ``-V * sin(wind_from - heading)``.
+        This follows the way pilots talk about it -- "a ten knot crosswind from
+        the right" -- rather than the direction the air is pushing, which is the
+        opposite sign. Wind direction is reported as where the wind blows *from*,
+        so a wind from 090 with the aircraft heading 360 gives ``+V``.
         """
-        return -self.wind_velocity_kt * math.sin(self.wind_direction_rad - self.heading_true_rad)
+        return self.wind_velocity_kt * math.sin(self.wind_direction_rad - self.heading_true_rad)
 
     @property
     def headwind_kt(self) -> float:

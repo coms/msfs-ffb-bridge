@@ -22,7 +22,9 @@ class Touchdown(EffectModule):
     description = "Impact thump scaled by descent rate, with a separate nosewheel arrival."
     priority = 100
     params = (
-        ParamSpec("full_scale_fpm", 420.0, 100.0, 1200.0, "Descent rate for a full-scale hit", "fpm"),
+        ParamSpec(
+            "full_scale_fpm", 420.0, 100.0, 1200.0, "Descent rate for a full-scale hit", "fpm"
+        ),
         ParamSpec("min_fpm", 40.0, 0.0, 400.0, "Descent rate below which nothing fires", "fpm"),
         ParamSpec("decay_s", 0.22, 0.05, 1.0, "Thump length", "s"),
         ParamSpec("burst_hz", 26.0, 8.0, 60.0, "Impact shudder frequency", "Hz"),

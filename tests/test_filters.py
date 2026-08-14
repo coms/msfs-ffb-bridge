@@ -53,7 +53,7 @@ def test_smoothstep_is_monotonic_and_bounded():
     values = [smoothstep(x / 20.0, 0.2, 0.8) for x in range(21)]
     assert values[0] == 0.0
     assert values[-1] == 1.0
-    assert all(b >= a for a, b in zip(values, values[1:]))
+    assert all(b >= a for a, b in zip(values, values[1:], strict=False))
 
 
 def test_deadband_is_continuous_at_the_edge():
@@ -214,6 +214,8 @@ def test_phase_accumulator_tracks_frequency():
     phase = PhaseAccumulator()
     for _ in range(100):
         phase.update(1.0, 0.01)  # one full cycle
-    assert phase.phase == pytest.approx(0.0, abs=1e-9) or phase.phase == pytest.approx(1.0, abs=1e-9)
+    assert phase.phase == pytest.approx(0.0, abs=1e-9) or phase.phase == pytest.approx(
+        1.0, abs=1e-9
+    )
     assert phase.sine() == pytest.approx(0.0, abs=1e-6)
     assert math.isfinite(phase.sine())

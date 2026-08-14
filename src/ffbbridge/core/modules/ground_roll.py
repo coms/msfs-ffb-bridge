@@ -68,7 +68,10 @@ class GroundRoll(EffectModule):
         ParamSpec("hz_per_kt", 0.09, 0.01, 0.4, "Slab-joint rate per knot", "Hz/kt"),
         ParamSpec("chatter_scale", 3.2, 1.0, 8.0, "Frequency multiplier on loose surfaces", ""),
         ParamSpec("max_hz", 32.0, 5.0, 60.0, "Highest tone frequency", "Hz"),
-        ParamSpec("min_hz", 3.0, 0.5, 15.0, "Lowest tone frequency", "Hz"),
+        # The floor has to stay low: slabs pass under the wheel at about 1 Hz at
+        # taxi speed, and clamping that away costs the whole speed cue while
+        # taxiing, which is where you spend the most time on the ground.
+        ParamSpec("min_hz", 1.2, 0.3, 15.0, "Lowest tone frequency", "Hz"),
         ParamSpec("full_speed_kt", 45.0, 10.0, 120.0, "Speed for full intensity", "kt"),
         ParamSpec("texture", 0.55, 0.0, 2.0, "Broadband wander vs. pure tone", ""),
     )

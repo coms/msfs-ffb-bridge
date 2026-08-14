@@ -69,7 +69,9 @@ class Turbulence(EffectModule):
             + roll * self.p("roll_gain")
         )
 
-        chop = self.p("chop") * map_range(tel.wind_velocity_kt, 4.0, self.p("wind_ref_kt"), 0.0, 1.0)
+        chop = self.p("chop") * map_range(
+            tel.wind_velocity_kt, 4.0, self.p("wind_ref_kt"), 0.0, 1.0
+        )
         # Chop needs airflow to exist: parked in a gale the wheel stays quiet.
         chop *= map_range(tel.ias_kt, 20.0, 80.0, 0.0, 1.0)
 

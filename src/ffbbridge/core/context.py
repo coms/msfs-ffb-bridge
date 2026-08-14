@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 
-class AxisMode(str, Enum):
+class AxisMode(StrEnum):
     """What the wheel is currently steering."""
 
     GROUND = "ground"

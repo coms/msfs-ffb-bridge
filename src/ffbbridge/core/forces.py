@@ -12,12 +12,12 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 
 from .filters import clamp
 
 
-class Waveform(str, Enum):
+class Waveform(StrEnum):
     """Periodic shapes, chosen to match what SDL and DirectInput both provide."""
 
     SINE = "sine"
