@@ -9,9 +9,10 @@ loading, all felt through the rim.
 The wheel is also your flight control: **rudder and nosewheel steering on the ground,
 ailerons in the air**, with an automatic handoff between the two.
 
-> **Status: complete but unflown.** Everything is built and 249 tests pass, but the
-> hardware half has never met a real wheelbase or a running simulator — it was developed
-> on Linux, where neither exists. Expect a tuning round or two. Start with
+> **Status: complete but unflown.** Everything is built and the test suite passes on
+> Linux and Windows, and CI produces a working Windows executable. But the hardware half
+> has never met a real wheelbase or a running simulator — it was developed on Linux, where
+> neither exists. Expect a tuning round or two. Start with
 > [the bench tests](docs/setup-pithouse.md#checking-it-worked), which prove the hardware
 > path on its own before the simulator is involved.
 
