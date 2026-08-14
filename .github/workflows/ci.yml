@@ -48,3 +48,53 @@ jobs:
       - run: python -m pip install ruff
       - run: ruff check src tests
       - run: ruff format --check src tests
+
+  package:
+    name: Windows build
+    needs: [test, lint]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[gui]" pyinstaller
+
+      - name: Build
+        # SDL2 has to be collected explicitly: PySDL2 loads it at runtime from
+        # the sdl2dll package, which PyInstaller cannot see by static analysis.
+        #
+        # SimConnect.dll is deliberately not bundled. It is Microsoft's, and
+        # redistributing it is not ours to decide; the bridge finds it on the
+        # user's machine and the doctor explains where to get it.
+        run: >
+          pyinstaller --noconfirm --onefile
+          --name ffbbridge
+          --collect-all sdl2dll
+          --collect-submodules sdl2
+          --add-data "profiles;profiles"
+          scripts/launcher.py
+
+      - name: Smoke test the build
+        run: |
+          dist\ffbbridge.exe bench list
+          dist\ffbbridge.exe simulate --csv trace.csv
+          dist\ffbbridge.exe doctor
+        # The doctor exits non-zero when it finds problems, and a CI runner has
+        # no wheelbase attached, so its exit code is informational here.
+        continue-on-error: true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ffbbridge-windows
+          path: |
+            dist/ffbbridge.exe
+            docs/
+            profiles/
+          if-no-files-found: error

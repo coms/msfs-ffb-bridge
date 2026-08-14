@@ -9,8 +9,11 @@ loading, all felt through the rim.
 The wheel is also your flight control: **rudder and nosewheel steering on the ground,
 ailerons in the air**, with an automatic handoff between the two.
 
-> **Status: in development.** The force model and its test suite are complete and running.
-> The hardware and simulator layers are next.
+> **Status: complete but unflown.** Everything is built and 249 tests pass, but the
+> hardware half has never met a real wheelbase or a running simulator — it was developed
+> on Linux, where neither exists. Expect a tuning round or two. Start with
+> [the bench tests](docs/setup-pithouse.md#checking-it-worked), which prove the hardware
+> path on its own before the simulator is involved.
 
 ## How it works
 
@@ -71,6 +74,28 @@ The R5 can produce 5.5 N·m at your wrists, so nothing in the force model is tru
 - automatic zeroing when the simulator is paused, in a menu, or in slew mode;
 - a module that raises an exception is dropped for that tick rather than taking the wheel
   with it.
+
+## Getting started
+
+```
+ffbbridge doctor      # check the setup and explain anything missing
+ffbbridge bench       # feel each effect on its own, with the simulator closed
+ffbbridge             # open the tuning interface and fly
+```
+
+Two things to do before the first flight:
+
+- [Set up MOZA Pit House](docs/setup-pithouse.md). The wheelbase applies its own spring
+  and friction on top of anything an application sends, and they are on by default. This
+  is the most common reason the bridge appears not to work.
+- [Leave the wheel unbound in the simulator](docs/setup-msfs.md). The bridge reads the
+  device directly and injects the axis, which is what lets one axis change meaning
+  between the ground and the air.
+
+Then [tuning](docs/tuning.md) — every slider applies while you fly.
+
+`ffbbridge simulate --csv trace.csv` flies a scripted sortie through the force model with
+no simulator and no hardware, which is the quickest way to see what a change actually did.
 
 ## Development
 

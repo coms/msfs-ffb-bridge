@@ -1,0 +1,242 @@
+{
+  "version": 1,
+  "default": {
+    "name": "Default GA",
+    "match": [],
+    "safety": {
+      "master_gain": 0.7,
+      "max_force": 0.9,
+      "max_slew_per_s": 8.0,
+      "watchdog_ms": 500.0,
+      "decay_ms": 500.0,
+      "zero_when_paused": true,
+      "zero_when_not_in_cockpit": true
+    },
+    "routing": {
+      "mode": "auto",
+      "transition_ms": 1200.0,
+      "air_agl_ft": 15.0,
+      "air_dwell_s": 1.0,
+      "ground_dwell_s": 0.7,
+      "use_tiller": false,
+      "override_button": -1,
+      "send_rate_hz": 60.0,
+      "axis_deadband": 0.0008
+    },
+    "wheel": {
+      "center": 0.0,
+      "deadzone": 0.01,
+      "expo": 0.25,
+      "invert": false,
+      "air_range": 0.35,
+      "ground_range": 0.7
+    },
+    "device": {
+      "name_match": "*MOZA*",
+      "periodic_slots": 0,
+      "invert_force": false,
+      "disable_autocenter": true,
+      "loop_hz": 100.0,
+      "simconnect_dll": ""
+    },
+    "modules": {
+      "brakes": {
+        "enabled": true,
+        "gain": 1.0
+      },
+      "buffet": {
+        "enabled": false,
+        "gain": 1.0
+      },
+      "control_loading": {
+        "enabled": true,
+        "gain": 1.0
+      },
+      "crosswind": {
+        "enabled": true,
+        "gain": 1.0
+      },
+      "engine_vibration": {
+        "enabled": true,
+        "gain": 0.8
+      },
+      "gear": {
+        "enabled": true,
+        "gain": 1.0
+      },
+      "ground_roll": {
+        "enabled": true,
+        "gain": 1.0
+      },
+      "handoff": {
+        "enabled": true,
+        "gain": 1.0
+      },
+      "prop_wash": {
+        "enabled": true,
+        "gain": 1.0
+      },
+      "shimmy": {
+        "enabled": true,
+        "gain": 1.0
+      },
+      "steering_feel": {
+        "enabled": true,
+        "gain": 1.0
+      },
+      "touchdown": {
+        "enabled": true,
+        "gain": 1.0
+      },
+      "turbulence": {
+        "enabled": true,
+        "gain": 1.0
+      }
+    }
+  },
+  "profiles": [
+    {
+      "name": "Airliners",
+      "match": [
+        "*a320*",
+        "*a32nx*",
+        "*747*",
+        "*787*",
+        "*777*",
+        "*737*"
+      ],
+      "safety": {
+        "master_gain": 0.7,
+        "max_force": 0.9,
+        "max_slew_per_s": 8.0,
+        "watchdog_ms": 500.0,
+        "decay_ms": 500.0,
+        "zero_when_paused": true,
+        "zero_when_not_in_cockpit": true
+      },
+      "routing": {
+        "mode": "auto",
+        "transition_ms": 1200.0,
+        "air_agl_ft": 15.0,
+        "air_dwell_s": 1.0,
+        "ground_dwell_s": 0.7,
+        "use_tiller": false,
+        "override_button": -1,
+        "send_rate_hz": 60.0,
+        "axis_deadband": 0.0008
+      },
+      "wheel": {
+        "center": 0.0,
+        "deadzone": 0.01,
+        "expo": 0.25,
+        "invert": false,
+        "air_range": 0.35,
+        "ground_range": 0.7
+      },
+      "device": {
+        "name_match": "*MOZA*",
+        "periodic_slots": 0,
+        "invert_force": false,
+        "disable_autocenter": true,
+        "loop_hz": 100.0,
+        "simconnect_dll": ""
+      },
+      "modules": {
+        "control_loading": {
+          "enabled": true,
+          "gain": 0.35
+        },
+        "engine_vibration": {
+          "enabled": true,
+          "gain": 0.4,
+          "params": {
+            "blades": 1.0,
+            "max_rpm": 100.0
+          }
+        },
+        "ground_roll": {
+          "enabled": true,
+          "gain": 1.1
+        },
+        "prop_wash": {
+          "enabled": false,
+          "gain": 1.0
+        },
+        "shimmy": {
+          "enabled": true,
+          "gain": 0.6
+        }
+      }
+    },
+    {
+      "name": "Warbirds",
+      "match": [
+        "*spitfire*",
+        "*mustang*",
+        "*p-51*",
+        "*corsair*"
+      ],
+      "safety": {
+        "master_gain": 0.7,
+        "max_force": 0.9,
+        "max_slew_per_s": 8.0,
+        "watchdog_ms": 500.0,
+        "decay_ms": 500.0,
+        "zero_when_paused": true,
+        "zero_when_not_in_cockpit": true
+      },
+      "routing": {
+        "mode": "auto",
+        "transition_ms": 1200.0,
+        "air_agl_ft": 15.0,
+        "air_dwell_s": 1.0,
+        "ground_dwell_s": 0.7,
+        "use_tiller": false,
+        "override_button": -1,
+        "send_rate_hz": 60.0,
+        "axis_deadband": 0.0008
+      },
+      "wheel": {
+        "center": 0.0,
+        "deadzone": 0.01,
+        "expo": 0.25,
+        "invert": false,
+        "air_range": 0.35,
+        "ground_range": 0.7
+      },
+      "device": {
+        "name_match": "*MOZA*",
+        "periodic_slots": 0,
+        "invert_force": false,
+        "disable_autocenter": true,
+        "loop_hz": 100.0,
+        "simconnect_dll": ""
+      },
+      "modules": {
+        "buffet": {
+          "enabled": true,
+          "gain": 1.0
+        },
+        "control_loading": {
+          "enabled": true,
+          "gain": 1.3
+        },
+        "engine_vibration": {
+          "enabled": true,
+          "gain": 1.1,
+          "params": {
+            "blades": 4.0
+          }
+        },
+        "prop_wash": {
+          "enabled": true,
+          "gain": 1.5
+        },
+        "shimmy": {
+          "enabled": false,
+          "gain": 1.0
+        }
+      }
+    }
+  ]
+}
