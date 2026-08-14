@@ -36,6 +36,17 @@ jobs:
       - name: Run tests
         run: python -m pytest -q --durations=10
 
+      - name: Check the launcher bootstraps from source
+        # run.bat is the entry point most people will use and cannot be tested
+        # anywhere but Windows, so exercise the branch that creates the
+        # environment from scratch.
+        if: runner.os == 'Windows'
+        run: .\run.bat simulate
+
+      - name: Check the launcher on Linux and macOS
+        if: runner.os != 'Windows'
+        run: ./run.sh simulate
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
@@ -85,6 +96,7 @@ jobs:
         run: |
           dist\ffbbridge.exe bench list
           dist\ffbbridge.exe simulate --csv trace.csv
+          .\run.bat bench list
           dist\ffbbridge.exe doctor
         # The doctor exits non-zero when it finds problems, and a CI runner has
         # no wheelbase attached, so its exit code is informational here.

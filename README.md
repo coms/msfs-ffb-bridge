@@ -78,11 +78,18 @@ The R5 can produce 5.5 N·m at your wrists, so nothing in the force model is tru
 
 ## Getting started
 
+Download `ffbbridge-windows` from the newest green
+[CI run](https://github.com/coms/msfs-ffb-bridge/actions), unzip it, and run these
+in order. Or clone the repository and use `run.bat`, which sets itself up on first
+use and takes the same arguments.
+
 ```
 ffbbridge doctor      # check the setup and explain anything missing
 ffbbridge bench       # feel each effect on its own, with the simulator closed
 ffbbridge             # open the tuning interface and fly
 ```
+
+Full instructions: [running the bridge](docs/running.md).
 
 Two things to do before the first flight:
 
