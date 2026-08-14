@@ -1,0 +1,45 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "msfs-ffb-bridge"
+version = "0.1.0"
+description = "Force feedback bridge from Microsoft Flight Simulator 2024 to a MOZA R5 wheelbase"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+
+dependencies = [
+    "pysdl2>=0.9.17",
+    "pysdl2-dll>=2.30.0",
+    "dearpygui>=2.0.0; platform_system == 'Windows'",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+]
+gui = [
+    "dearpygui>=2.0.0",
+]
+
+[project.scripts]
+ffbbridge = "ffbbridge.app.main:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ffbbridge"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+filterwarnings = ["error::DeprecationWarning:ffbbridge.*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
