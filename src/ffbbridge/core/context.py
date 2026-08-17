@@ -39,6 +39,23 @@ class TickContext:
     telemetry_stale: bool = False
     seconds: float = 0.0
     """Seconds since the bridge started."""
+    wheel_rotation_deg: float = 540.0
+    """Physical lock-to-lock travel of the wheel, so a module can think in degrees."""
+    soft_lock_deg: float = 0.0
+    """Lock-to-lock travel the soft lock defends; 0 when there is no soft lock."""
+
+    @property
+    def soft_lock_limit(self) -> float:
+        """Where the soft lock sits in axis units either side of centre; 0 if off."""
+        if self.soft_lock_deg <= 0.0 or self.wheel_rotation_deg <= 0.0:
+            return 0.0
+        return min(self.soft_lock_deg / self.wheel_rotation_deg, 1.0)
+
+    def degrees_to_axis(self, degrees: float) -> float:
+        """Convert a span in degrees into axis units, where 1.0 is half the travel."""
+        if self.wheel_rotation_deg <= 0.0:
+            return 0.0
+        return 2.0 * degrees / self.wheel_rotation_deg
 
     @property
     def air_weight(self) -> float:

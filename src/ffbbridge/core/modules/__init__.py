@@ -18,6 +18,7 @@ from .ground_roll import GroundRoll
 from .handoff import HandoffAssist
 from .prop_wash import PropWash
 from .shimmy import NosewheelShimmy
+from .soft_lock import SoftLock
 from .steering_feel import SteeringFeel
 from .touchdown import Touchdown
 from .turbulence import Turbulence
@@ -26,6 +27,7 @@ from .turbulence import Turbulence
 #: Ground and touchdown effects come first because they are what this build
 #: was tuned for.
 MODULE_REGISTRY: tuple[type[EffectModule], ...] = (
+    SoftLock,
     GroundRoll,
     Touchdown,
     BrakeShudder,
@@ -45,6 +47,7 @@ __all__ = [
     "EffectModule",
     "ParamSpec",
     "MODULE_REGISTRY",
+    "SoftLock",
     "HandoffAssist",
     "GroundRoll",
     "Touchdown",

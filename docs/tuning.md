@@ -44,6 +44,42 @@ find yourself at 2.0 the master strength is probably too low.
   ailerons in cruise. This one is normalised against the aircraft's design
   cruise speed, so it should carry across aircraft without adjustment.
 
+## The soft lock
+
+An aeroplane's controls stop somewhere. A direct-drive base does not, so the
+bridge puts the stop back in software:
+
+```json
+"wheel": {
+  "rotation_deg": 540.0,
+  "soft_lock_deg": 180.0
+}
+```
+
+Both are lock-to-lock, the way wheel software states them. `rotation_deg` is
+what the wheelbase itself is set to and has to match it — nothing can read it
+back from the device. `soft_lock_deg` is the travel the aircraft gets, so 180
+means 90 degrees either side of centre. Set it to 0 for no stop.
+
+Ships at 180°, which is roughly a light aircraft's yoke and comfortable to reach
+without shuffling your hands.
+
+Two things follow from turning it on:
+
+- `air_range` and `ground_range` are capped at the soft lock, so full rudder and
+  full aileron still arrive **at** the stop rather than through it. A 180° lock
+  therefore makes the ground axis noticeably more sensitive than the 0.7 of a
+  540° wheel it would otherwise use — that is the trade, and it is why a narrow
+  lock wants a little more `expo`.
+- The stop is soft on purpose. It is a force like any other, so it is bounded by
+  the master strength and the force ceiling; shove hard and it yields. Nothing
+  here can hold the rim against a determined arm, and it should not try to.
+
+The `soft_lock` effect has the usual three knobs: *Force at the stop*, *Travel
+the stop builds over* (8 degrees by default — the wall ramps in rather than
+arriving as a step), and *Resistance past the stop*, which is what stops you
+bouncing off it. Turn the effect off to keep the axis scaling but lose the wall.
+
 ## Per-aircraft profiles
 
 Profiles match on the aircraft title or its ATC model, with wildcards. The first

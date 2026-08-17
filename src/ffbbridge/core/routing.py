@@ -132,6 +132,8 @@ class AxisRouter:
             transition_progress=progress if mode.is_transition else 0.0,
             telemetry_stale=telemetry_stale,
             seconds=seconds,
+            wheel_rotation_deg=self.wheel_config.rotation_deg,
+            soft_lock_deg=self.wheel_config.soft_lock_deg,
         )
 
     # --- Update -----------------------------------------------------------
@@ -151,12 +153,10 @@ class AxisRouter:
         raw = self._shape(wheel.position)
         gw = self._ground_weight
 
-        rudder = self._outgoing_or_incoming(
-            raw, self.wheel_config.ground_range, weight=gw, incoming=target > 0.5
-        )
-        aileron = self._outgoing_or_incoming(
-            raw, self.wheel_config.air_range, weight=1.0 - gw, incoming=target < 0.5
-        )
+        ground_range = self._axis_range(self.wheel_config.ground_range)
+        air_range = self._axis_range(self.wheel_config.air_range)
+        rudder = self._outgoing_or_incoming(raw, ground_range, weight=gw, incoming=target > 0.5)
+        aileron = self._outgoing_or_incoming(raw, air_range, weight=1.0 - gw, incoming=target < 0.5)
 
         aileron = self._aileron_slew.update(clamp(aileron), dt)
         rudder = self._rudder_slew.update(clamp(rudder), dt)
@@ -220,6 +220,16 @@ class AxisRouter:
             reference = reference / axis_range if axis_range > 0.0 else reference
             value -= reference * (1.0 - weight)
         return clamp(value) * weight
+
+    def _axis_range(self, axis_range: float) -> float:
+        """Travel that earns full deflection, never more than the soft lock allows.
+
+        A soft lock narrower than the configured range would otherwise cost
+        authority: the stop would arrive before full rudder did, and you would be
+        pushing against the wall to get the last of your steering.
+        """
+        limit = self.wheel_config.soft_lock_fraction
+        return min(axis_range, limit) if limit > 0.0 else axis_range
 
     def _shape(self, position: float) -> float:
         """Apply calibration to the raw wheel position."""

@@ -276,3 +276,33 @@ def test_context_reports_transition_progress():
     assert context.mode is AxisMode.TO_AIR
     assert 0.0 < context.transition_progress < 1.0
     assert context.air_weight == pytest.approx(1.0 - context.ground_weight)
+
+
+def test_soft_lock_caps_the_travel_needed_for_full_deflection():
+    """Full rudder has to be reachable before the end stop, not through it."""
+    routing = RoutingConfig()
+    wheel_config = WheelConfig(
+        deadzone=0.0, expo=0.0, ground_range=0.7, rotation_deg=540.0, soft_lock_deg=180.0
+    )
+    router = AxisRouter(routing, wheel_config)
+    # A third of the travel is the soft lock, and now also full deflection.
+    command = drive(router, rolling(), 2.0, wheel=WheelState(position=1 / 3))
+    assert command.rudder == pytest.approx(1.0, abs=0.01)
+
+
+def test_soft_lock_wider_than_the_range_leaves_the_range_alone():
+    routing = RoutingConfig()
+    wheel_config = WheelConfig(
+        deadzone=0.0, expo=0.0, ground_range=0.3, rotation_deg=540.0, soft_lock_deg=540.0
+    )
+    router = AxisRouter(routing, wheel_config)
+    command = drive(router, rolling(), 2.0, wheel=WheelState(position=0.3))
+    assert command.rudder == pytest.approx(1.0, abs=0.01)
+
+
+def test_soft_lock_reaches_the_effect_modules_through_the_context():
+    routing = RoutingConfig()
+    wheel_config = WheelConfig(rotation_deg=540.0, soft_lock_deg=180.0)
+    router = AxisRouter(routing, wheel_config)
+    ctx = router.context(telemetry_stale=False, seconds=0.0)
+    assert ctx.soft_lock_limit == pytest.approx(1 / 3)

@@ -111,3 +111,12 @@ def test_module_accessor_creates_settings_on_demand():
     settings = config.module("brand_new")
     settings.gain = 0.25
     assert config.modules["brand_new"].gain == 0.25
+
+
+def test_soft_lock_survives_the_round_trip_and_reads_as_a_fraction():
+    from ffbbridge.core.config import WheelConfig
+
+    wheel = WheelConfig(rotation_deg=540.0, soft_lock_deg=180.0)
+    assert wheel.soft_lock_fraction == 1 / 3
+    assert WheelConfig.from_dict(wheel.to_dict()) == wheel
+    assert WheelConfig().soft_lock_fraction == 0.0

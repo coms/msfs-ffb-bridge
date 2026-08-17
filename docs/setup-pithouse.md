@@ -30,12 +30,18 @@ In MOZA Pit House, on the wheelbase page:
 | Inertia | **0** | Makes the rim feel heavy and swallows sharp transients such as touchdown |
 | Damping | **5–10** | A little is good: it takes the edge off without dulling anything |
 | Steering angle | **360–540°** | Comfortable for both taxiing and roll input |
+| Soft lock / end stop | **off** | The bridge does this, at the aircraft's travel rather than the wheel's |
 | Overall strength | **40–60%** | Start here. The R5 can produce 5.5 N·m, which is a lot at the wrists |
 | Road sensitivity / effect equaliser | flat, or off | The bridge has already shaped the effects; a second equaliser fights it |
 | Natural inertia / natural friction | **0** | Same reasoning as above |
 
 Save it as a profile named something like "Flight" so it is one click to switch
 back and forth with your racing settings.
+
+Whatever steering angle you settle on, tell the bridge about it:
+`wheel.rotation_deg` in the profile has to match, because it is the only way a
+setting written in degrees — the soft lock — can mean anything. Nothing can read
+the angle back from the wheelbase.
 
 ## Checking it worked
 

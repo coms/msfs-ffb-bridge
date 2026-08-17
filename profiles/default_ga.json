@@ -29,7 +29,9 @@
       "expo": 0.25,
       "invert": false,
       "air_range": 0.35,
-      "ground_range": 0.7
+      "ground_range": 0.7,
+      "rotation_deg": 540.0,
+      "soft_lock_deg": 180.0
     },
     "device": {
       "name_match": "*MOZA*",
@@ -77,6 +79,10 @@
         "gain": 1.0
       },
       "shimmy": {
+        "enabled": true,
+        "gain": 1.0
+      },
+      "soft_lock": {
         "enabled": true,
         "gain": 1.0
       },
@@ -131,7 +137,9 @@
         "expo": 0.25,
         "invert": false,
         "air_range": 0.35,
-        "ground_range": 0.7
+        "ground_range": 0.7,
+        "rotation_deg": 540.0,
+        "soft_lock_deg": 180.0
       },
       "device": {
         "name_match": "*MOZA*",
@@ -202,7 +210,9 @@
         "expo": 0.25,
         "invert": false,
         "air_range": 0.35,
-        "ground_range": 0.7
+        "ground_range": 0.7,
+        "rotation_deg": 540.0,
+        "soft_lock_deg": 180.0
       },
       "device": {
         "name_match": "*MOZA*",

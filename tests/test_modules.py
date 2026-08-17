@@ -22,6 +22,7 @@ from ffbbridge.core.modules import (
     HandoffAssist,
     NosewheelShimmy,
     PropWash,
+    SoftLock,
     SteeringFeel,
     Touchdown,
     Turbulence,
@@ -505,3 +506,44 @@ def test_handoff_assist_releases_as_the_transition_completes():
         ctx=TickContext(mode=AxisMode.TO_AIR, ground_weight=0.1, transition_progress=0.9),
     )
     assert late.spring.coefficient < early.spring.coefficient
+
+
+# --- Soft lock -----------------------------------------------------------
+
+SOFT_LOCK_180 = TickContext(ground_weight=1.0, wheel_rotation_deg=540.0, soft_lock_deg=180.0)
+
+
+def test_soft_lock_is_silent_inside_the_limit():
+    # 180 of 540 degrees is a third of the travel each way.
+    wheel = WheelState(position=0.32)
+    assert run_module(SoftLock(), taxiing(), ctx=SOFT_LOCK_180, wheel=wheel).is_empty
+
+
+def test_soft_lock_pushes_back_past_the_limit():
+    right = run_module(SoftLock(), taxiing(), ctx=SOFT_LOCK_180, wheel=WheelState(position=0.5))
+    left = run_module(SoftLock(), taxiing(), ctx=SOFT_LOCK_180, wheel=WheelState(position=-0.5))
+    assert right.constant < 0.0
+    assert left.constant == pytest.approx(-right.constant)
+
+
+def test_soft_lock_builds_over_the_ramp_rather_than_stepping():
+    forces = []
+    for position in (0.34, 0.35, 0.36, 0.40):
+        contribution = run_module(
+            SoftLock(), taxiing(), ctx=SOFT_LOCK_180, wheel=WheelState(position=position)
+        )
+        forces.append(-contribution.constant)
+    assert forces == sorted(forces)
+    assert forces[0] < forces[-1]
+
+
+def test_soft_lock_damps_only_once_past_the_stop():
+    inside = run_module(SoftLock(), taxiing(), ctx=SOFT_LOCK_180, wheel=WheelState(position=0.2))
+    outside = run_module(SoftLock(), taxiing(), ctx=SOFT_LOCK_180, wheel=WheelState(position=0.6))
+    assert inside.damper is None
+    assert outside.damper.coefficient > 0.0
+
+
+def test_soft_lock_does_nothing_when_not_configured():
+    wheel = WheelState(position=0.95)
+    assert run_module(SoftLock(), taxiing(), ctx=GROUND, wheel=wheel).is_empty

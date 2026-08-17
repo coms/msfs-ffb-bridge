@@ -165,6 +165,31 @@ class WheelConfig:
     wheel is about +/-95 degrees, which is a comfortable roll input."""
     ground_range: float = 0.7
     """More travel for steering, where fine control at low speed matters."""
+    rotation_deg: float = 540.0
+    """Physical lock-to-lock travel the wheelbase is set to, in degrees.
+
+    The bridge only ever sees -1..1, so this is what lets a setting written in
+    degrees mean anything. It has to match what the wheel's own software is set
+    to; nothing can read it back from the device.
+    """
+    soft_lock_deg: float = 0.0
+    """Lock-to-lock travel the force model defends with an end stop; 0 disables.
+
+    An aeroplane's controls stop somewhere, and a direct-drive base will happily
+    keep turning. This is the rotation you want the aircraft to have, expressed
+    the way wheel software expresses it: 180 means 90 degrees either side.
+    """
+
+    @property
+    def soft_lock_fraction(self) -> float:
+        """The soft lock as a fraction of travel each way; 0 when disabled.
+
+        Both figures are lock-to-lock, so the ratio is already the half-travel
+        fraction that axis units are measured in.
+        """
+        if self.soft_lock_deg <= 0.0 or self.rotation_deg <= 0.0:
+            return 0.0
+        return clamp(self.soft_lock_deg / self.rotation_deg, 0.0, 1.0)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -174,6 +199,8 @@ class WheelConfig:
             "invert": self.invert,
             "air_range": self.air_range,
             "ground_range": self.ground_range,
+            "rotation_deg": self.rotation_deg,
+            "soft_lock_deg": self.soft_lock_deg,
         }
 
     @classmethod
@@ -186,6 +213,8 @@ class WheelConfig:
             invert=bool(data.get("invert", base.invert)),
             air_range=clamp(float(data.get("air_range", base.air_range)), 0.05, 1.0),
             ground_range=clamp(float(data.get("ground_range", base.ground_range)), 0.05, 1.0),
+            rotation_deg=clamp(float(data.get("rotation_deg", base.rotation_deg)), 90.0, 2160.0),
+            soft_lock_deg=max(0.0, float(data.get("soft_lock_deg", base.soft_lock_deg))),
         )
 
 
