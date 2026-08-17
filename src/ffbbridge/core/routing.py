@@ -34,6 +34,32 @@ from .filters import DwellTimer, SlewLimiter, clamp, deadband, expo
 from .telemetry import FlightTelemetry, WheelState
 
 
+def shape_displacement(displacement: float, cfg: WheelConfig) -> float:
+    """Apply the deadzone and expo curve to a displacement from centre."""
+    return expo(deadband(clamp(displacement), cfg.deadzone), cfg.expo)
+
+
+def inverse_shape(target: float, cfg: WheelConfig, *, steps: int = 24) -> float:
+    """Displacement whose shaped value is ``target``.
+
+    Found by bisection rather than algebra: the expo curve is a cubic blend with
+    no cheap inverse, and the shaping is monotonic so bisection is exact enough
+    at a fraction of the precision the wheel can resolve.
+    """
+    if target >= 1.0:
+        return 1.0
+    if target <= 0.0:
+        return 0.0
+    low, high = 0.0, 1.0
+    for _ in range(steps):
+        mid = (low + high) * 0.5
+        if shape_displacement(mid, cfg) < target:
+            low = mid
+        else:
+            high = mid
+    return (low + high) * 0.5
+
+
 class OverrideState:
     """Manual override cycled from a wheel button."""
 
@@ -132,6 +158,8 @@ class AxisRouter:
             transition_progress=progress if mode.is_transition else 0.0,
             telemetry_stale=telemetry_stale,
             seconds=seconds,
+            lock_displacement=self.lock_displacement(),
+            center=self.wheel_config.center,
         )
 
     # --- Update -----------------------------------------------------------
@@ -227,8 +255,21 @@ class AxisRouter:
         value = position - cfg.center
         if cfg.invert:
             value = -value
-        value = deadband(clamp(value), cfg.deadzone)
-        return expo(value, cfg.expo)
+        return shape_displacement(value, cfg)
+
+    # --- Control stops ----------------------------------------------------
+
+    def axis_range(self) -> float:
+        """Wheel travel that gives full deflection on the axis in use.
+
+        Blended through a handoff, where both channels still have some say.
+        """
+        gw = self._ground_weight
+        return self.wheel_config.ground_range * gw + self.wheel_config.air_range * (1.0 - gw)
+
+    def lock_displacement(self) -> float:
+        """How far from centre the wheel can travel before the control is at its stop."""
+        return inverse_shape(self.axis_range(), self.wheel_config)
 
     def _poll_override_button(self, wheel: WheelState) -> None:
         index = self.routing.override_button

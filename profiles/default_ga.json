@@ -80,6 +80,10 @@
         "enabled": true,
         "gain": 1.0
       },
+      "soft_lock": {
+        "enabled": true,
+        "gain": 1.0
+      },
       "steering_feel": {
         "enabled": true,
         "gain": 1.0

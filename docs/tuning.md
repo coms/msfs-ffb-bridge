@@ -112,3 +112,40 @@ If you would rather do it by hand, bind a rim button to the override with
   mode, or when telemetry stops arriving for half a second.
 - Closing the bridge releases every effect. So does a crash — the teardown runs
   on every exit path.
+
+## The soft lock
+
+Only part of the rim's travel is mapped to a flight control — by default about a
+third of it for ailerons, and 70% for ground steering. Past that point the
+surface is already hard over and turning further does nothing. The soft lock
+puts a control stop exactly there, so the rim stops where the aeroplane's
+controls would, and it moves as the axis hands over between ground and air.
+
+Nothing at all is felt inside the usable range, so it never interferes with any
+other effect.
+
+**What it can and cannot be.** A force feedback condition effect reaches full
+force only at full displacement, so the resistance grows in proportion to how far
+past the stop you have pushed: a tenth of the travel past it gives a tenth of
+maximum force. What you feel is firm, unmistakable, progressive resistance
+rather than a brick wall. Nothing can change that with force feedback alone —
+faking a hard wall in software would mean a high-gain loop running at 100 Hz,
+which on a direct drive wheel risks it buzzing at the boundary.
+
+What does help is **reducing the wheelbase's rotation angle** so less travel is
+wasted, which puts the stop nearer the rim's own limit. See
+[the note in the Pit House settings](setup-pithouse.md#a-note-on-rotation-angle).
+
+Parameters:
+
+- *How solid the stop feels* — full stiffness by default, which is as steep as a
+  condition effect goes. Lower it if you would rather it were only a hint.
+- *Travel past full deflection before it bites* — a small margin so the stop
+  never eats the last of the travel the axis needs.
+
+The master strength slider deliberately does **not** scale it. A stop softened to
+a third is one you push straight through without noticing, which is worse than
+not having one. It still disappears with everything else when the simulator is
+paused or telemetry stops.
+
+Feel where it sits with `ffbbridge bench softlock`.

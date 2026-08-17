@@ -29,13 +29,27 @@ In MOZA Pit House, on the wheelbase page:
 | Friction | **0** | Masks the small, fast effects like runway texture |
 | Inertia | **0** | Makes the rim feel heavy and swallows sharp transients such as touchdown |
 | Damping | **5–10** | A little is good: it takes the edge off without dulling anything |
-| Steering angle | **360–540°** | Comfortable for both taxiing and roll input |
+| Steering angle | **360–540°** | Comfortable for both taxiing and roll input. See the note below |
 | Overall strength | **40–60%** | Start here. The R5 can produce 5.5 N·m, which is a lot at the wrists |
 | Road sensitivity / effect equaliser | flat, or off | The bridge has already shaped the effects; a second equaliser fights it |
 | Natural inertia / natural friction | **0** | Same reasoning as above |
 
 Save it as a profile named something like "Flight" so it is one click to switch
 back and forth with your racing settings.
+
+### A note on rotation angle
+
+The narrower you set it, the better the soft lock feels. Only part of the rim's
+travel maps to a flight control — about a third of it for ailerons by default —
+and the control stop can only push back in proportion to how far past it you
+have gone. At 540° the stop lands near the middle of the travel and the
+resistance builds gradually; at 200° there is little wasted travel and the stop
+is much more definite.
+
+Against that, taxiing wants travel: steering is far easier to be precise with
+when a given nosewheel angle is a bigger turn of the wheel. 360° is a reasonable
+compromise. If you mostly fly rather than taxi, try 200–240° and raise
+`wheel.air_range` toward 1.0 to match.
 
 ## Checking it worked
 

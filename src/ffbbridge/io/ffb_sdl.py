@@ -46,6 +46,7 @@ INFINITE = sdl_haptic.SDL_HAPTIC_INFINITY
 CONSTANT_SLOT = "__constant__"
 SPRING_SLOT = "__spring__"
 DAMPER_SLOT = "__damper__"
+END_STOP_SLOT = "__end_stop__"
 
 
 class FfbError(RuntimeError):
@@ -231,10 +232,10 @@ class HapticOutput:
             max_playing=sdl_haptic.SDL_HapticNumEffectsPlaying(self._haptic),
             num_axes=sdl_haptic.SDL_HapticNumAxes(self._haptic),
         )
-        # Reserve room for the constant force and the two condition effects,
-        # then spend whatever is left on vibration.
+        # Reserve room for the constant force, the two condition effects and
+        # the control stop, then spend whatever is left on vibration.
         playable = max(self.capabilities.max_playing, self.capabilities.max_effects)
-        available = max(0, playable - 3)
+        available = max(0, playable - 4)
         budget = self.requested_budget or available
         self.periodic_slots = max(0, min(budget, available)) if available else 0
 
@@ -283,6 +284,7 @@ class HapticOutput:
         self._apply_constant(force)
         self._apply_spring(force)
         self._apply_damper(force)
+        self._apply_end_stop(force)
         self._apply_periodics(force)
 
     def _apply_constant(self, force: ForceOutput) -> None:
@@ -306,6 +308,21 @@ class HapticOutput:
             self._release(DAMPER_SLOT)
             return
         self._upsert(DAMPER_SLOT, fx.build_damper(force.damper))
+
+    def _apply_end_stop(self, force: ForceOutput) -> None:
+        """The control stop, as a second spring of its own.
+
+        Separate from the centring spring because the two cannot be expressed as
+        one: this one is a wall with a wide dead area, that one is a gentle pull
+        toward a trimmed neutral. Devices that will not load a second condition
+        effect simply lose the stop, which the slot bookkeeping handles.
+        """
+        if not self.capabilities.has(sdl_haptic.SDL_HAPTIC_SPRING):
+            return
+        if force.end_stop is None or force.end_stop.coefficient <= 0.0:
+            self._release(END_STOP_SLOT)
+            return
+        self._upsert(END_STOP_SLOT, fx.build_spring(force.end_stop, axis_invert=self.axis_invert))
 
     def _apply_periodics(self, force: ForceOutput) -> None:
         wanted = {p.label: p for p in force.periodics}

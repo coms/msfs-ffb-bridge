@@ -104,6 +104,7 @@ class EffectMixer:
         dampers: list[Damper] = []
         periodics: list[Periodic] = []
         breakdown: dict[str, float] = {}
+        end_stop: Spring | None = None
 
         for module in self.modules:
             if not module.enabled:
@@ -123,6 +124,13 @@ class EffectMixer:
                 springs.append(_scale_spring(contribution.spring, gain))
             if contribution.damper is not None:
                 dampers.append(_scale_damper(contribution.damper, gain))
+            if contribution.end_stop is not None:
+                # Never merged with the ordinary springs: combining would take
+                # the smallest deadband and turn a wall into a snap to centre.
+                # The tightest stop wins if more than one module asks for one.
+                candidate = _scale_spring(contribution.end_stop, gain)
+                if end_stop is None or candidate.deadband < end_stop.deadband:
+                    end_stop = candidate
             for periodic in contribution.periodics:
                 scaled = periodic.scaled(gain)
                 if scaled.is_audible:
@@ -177,12 +185,25 @@ class EffectMixer:
             for p in hardware
         )
 
+        if end_stop is not None:
+            # The envelope applies -- a stop should disappear along with every
+            # other force when the sim is paused or telemetry dies -- but the
+            # master gain does not. A wall scaled down to a third is one you
+            # push straight through, which is worse than having none.
+            end_stop = Spring(
+                coefficient=clamp(end_stop.coefficient * self._envelope, 0.0, 1.0),
+                center=end_stop.center,
+                saturation=clamp(end_stop.saturation * self._envelope, 0.0, 1.0),
+                deadband=end_stop.deadband,
+            )
+
         self.diagnostics = diagnostics
         return ForceOutput(
             constant=total,
             spring=spring,
             damper=damper,
             periodics=hardware_scaled,
+            end_stop=end_stop,
             breakdown=breakdown,
             clipped=clipped,
         )

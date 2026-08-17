@@ -40,6 +40,16 @@ class TickContext:
     seconds: float = 0.0
     """Seconds since the bridge started."""
 
+    lock_displacement: float = 1.0
+    """How far the wheel can turn from centre before the control is at its stop.
+
+    In wheel travel, 0..1. Beyond this the control surface is already fully
+    deflected and turning further achieves nothing, which is where the soft lock
+    puts its wall.
+    """
+    center: float = 0.0
+    """Calibrated centre of the wheel, in device units."""
+
     @property
     def air_weight(self) -> float:
         return 1.0 - self.ground_weight

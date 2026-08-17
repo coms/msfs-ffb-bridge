@@ -87,6 +87,11 @@ def _touchdown_thumps(t: float) -> ForceOutput:
     )
 
 
+def _soft_lock(t: float) -> ForceOutput:
+    """The control stop on its own, so you can find it and feel where it sits."""
+    return ForceOutput(end_stop=Spring(coefficient=1.0, center=0.0, saturation=0.95, deadband=0.45))
+
+
 def _everything(t: float) -> ForceOutput:
     """All channels at once, to check the device can hold them simultaneously."""
     return ForceOutput(
@@ -154,6 +159,15 @@ BENCH_TESTS: tuple[BenchTest, ...] = (
         "A firm arrival every two seconds. Should be a distinct knock, not a buzz.",
         _touchdown_thumps,
         duration=10.0,
+    ),
+    BenchTest(
+        "softlock",
+        "Soft lock",
+        "Turn the wheel slowly to the stops. Nothing at all until roughly halfway, "
+        "then resistance that builds the further you push. That point is where the "
+        "control surface runs out of travel.",
+        _soft_lock,
+        duration=20.0,
     ),
     BenchTest(
         "everything",

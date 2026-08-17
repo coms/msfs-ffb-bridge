@@ -125,6 +125,15 @@ class Contribution:
     spring: Spring | None = None
     damper: Damper | None = None
     periodics: list[Periodic] = field(default_factory=list)
+    end_stop: Spring | None = None
+    """A control stop, kept out of the ordinary spring pool.
+
+    Merging it in would be actively dangerous: springs combine by summing
+    stiffness and taking the *smallest* deadband, so a stiff wall at 35% travel
+    plus a gentle centring spring would collapse into a maximally stiff spring
+    with no deadband at all -- a wheel that snaps violently to centre instead of
+    a wall you can lean on.
+    """
 
     def add_periodic(
         self,
@@ -156,6 +165,7 @@ class Contribution:
             abs(self.constant) < 1e-6
             and self.spring is None
             and self.damper is None
+            and self.end_stop is None
             and not self.periodics
         )
 
@@ -172,6 +182,8 @@ class ForceOutput:
     spring: Spring | None = None
     damper: Damper | None = None
     periodics: tuple[Periodic, ...] = ()
+    end_stop: Spring | None = None
+    """Rendered as its own device-side spring, separate from the one above."""
     breakdown: dict[str, float] = field(default_factory=dict)
     clipped: bool = False
 
@@ -182,6 +194,8 @@ class ForceOutput:
             total += self.spring.force_at(position)
         if self.damper is not None:
             total += self.damper.force_at(velocity)
+        if self.end_stop is not None:
+            total += self.end_stop.force_at(position)
         return total
 
 
