@@ -40,6 +40,10 @@ find yourself at 2.0 the master strength is probably too low.
   to two hums at the wrong pitch.
 - `steering_feel` → *Stationary scrub resistance*: how heavy the nosewheel is
   when you are stopped. Raise it if taxiing feels weightless.
+- `skid` → *Slip before anything is felt*: how far a wheel has to fall behind
+  the others before it counts as locked. Nothing reports tyre radius, so the
+  module learns RPM per knot while you roll with the brakes off; an aircraft
+  that reports no wheel RPM at all stays silent rather than guessing.
 - `control_loading` → *Centring force at reference speed*: the weight of the
   ailerons in cruise. This one is normalised against the aircraft's design
   cruise speed, so it should carry across aircraft without adjustment.

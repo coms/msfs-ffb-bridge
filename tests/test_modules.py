@@ -20,6 +20,7 @@ from ffbbridge.core.modules import (
     GearTransit,
     GroundRoll,
     HandoffAssist,
+    LockedWheel,
     NosewheelShimmy,
     PropWash,
     SoftLock,
@@ -229,6 +230,106 @@ def test_asymmetric_braking_pulls_toward_the_braked_side():
 
 def test_brakes_are_silent_in_the_air():
     assert run_module(BrakeShudder(), flying(brake_left=1.0), ctx=AIR).is_empty
+
+
+def test_the_braking_pull_goes_with_the_rudder_but_the_judder_stays():
+    """Uneven braking is a force in the steering; the judder is not.
+
+    With the wheel pinned to ailerons the pedals are doing the steering, so the
+    pull belongs to them - but the rollout should still feel like a rollout.
+    """
+    uneven = taxiing(gs_kt=40.0, brake_left=0.0, brake_right=0.8)
+    no_rudder = TickContext(mode=AxisMode.AIR, ground_weight=0.0)
+
+    on_the_wheel = run_module(BrakeShudder(), uneven, ctx=GROUND)
+    on_the_pedals = run_module(BrakeShudder(), uneven, ctx=no_rudder)
+
+    assert on_the_wheel.constant > 0.0
+    assert on_the_pedals.constant == 0.0
+    assert periodic_named(on_the_pedals, "brake_judder")
+
+
+# --- Locked wheel --------------------------------------------------------
+
+
+def rolling_then(module, *, learn_kt=40.0, ticks=240, **overrides):
+    """Teach the module what a rolling wheel looks like, then change something.
+
+    Nothing reports tyre radius, so the module learns RPM per knot with the
+    brakes off before it can call anything a skid.
+    """
+    free = taxiing(gs_kt=learn_kt, wheel_rpm_left=learn_kt * 8.0, wheel_rpm_right=learn_kt * 8.0)
+    for _ in range(ticks):
+        module.update(free, WheelState(), GROUND, DT)
+    return run_module(module, taxiing(**overrides), ctx=GROUND)
+
+
+def test_a_rolling_wheel_is_not_a_skid():
+    module = LockedWheel()
+    contribution = rolling_then(
+        module, gs_kt=40.0, wheel_rpm_left=320.0, wheel_rpm_right=320.0, brake_left=0.9
+    )
+    assert periodic_named(contribution, "skid_skip") is None
+
+
+def test_a_locked_wheel_skips():
+    module = LockedWheel()
+    contribution = rolling_then(
+        module, gs_kt=40.0, wheel_rpm_left=0.0, wheel_rpm_right=0.0, brake_left=1.0
+    )
+    skip = periodic_named(contribution, "skid_skip")
+    assert skip is not None
+    assert skip.waveform is Waveform.SQUARE
+
+
+def test_one_locked_main_pulls_toward_the_locked_side():
+    left = rolling_then(
+        LockedWheel(), gs_kt=40.0, wheel_rpm_left=0.0, wheel_rpm_right=320.0, brake_left=1.0
+    )
+    right = rolling_then(
+        LockedWheel(), gs_kt=40.0, wheel_rpm_left=320.0, wheel_rpm_right=0.0, brake_right=1.0
+    )
+    assert right.constant > 0 > left.constant
+
+
+def test_both_wheels_locked_pull_nowhere_in_particular():
+    contribution = rolling_then(
+        LockedWheel(), gs_kt=40.0, wheel_rpm_left=0.0, wheel_rpm_right=0.0, brake_left=1.0
+    )
+    assert contribution.constant == pytest.approx(0.0)
+
+
+def test_an_aircraft_that_reports_no_wheel_rpm_stays_silent():
+    """The failure that matters: not every aeroplane fills these in.
+
+    Rolling at forty knots reporting zero RPM teaches a ratio of zero, which
+    expects nothing and so can never find a wheel short of it. Silence is the
+    right answer here, not a permanent skid.
+    """
+    module = LockedWheel()
+    never_reports = taxiing(gs_kt=40.0, wheel_rpm_left=0.0, wheel_rpm_right=0.0)
+    for _ in range(240):
+        module.update(never_reports, WheelState(), GROUND, DT)
+
+    braking = taxiing(gs_kt=40.0, wheel_rpm_left=0.0, wheel_rpm_right=0.0, brake_left=1.0)
+    assert run_module(module, braking, ctx=GROUND).is_empty
+
+
+def test_the_skid_pull_goes_with_the_rudder():
+    module = LockedWheel()
+    free = taxiing(gs_kt=40.0, wheel_rpm_left=320.0, wheel_rpm_right=320.0)
+    for _ in range(240):
+        module.update(free, WheelState(), GROUND, DT)
+    skidding = taxiing(gs_kt=40.0, wheel_rpm_left=0.0, wheel_rpm_right=320.0, brake_left=1.0)
+    on_the_pedals = run_module(
+        module, skidding, ctx=TickContext(mode=AxisMode.AIR, ground_weight=0.0)
+    )
+    assert on_the_pedals.constant == 0.0
+    assert periodic_named(on_the_pedals, "skid_skip")
+
+
+def test_the_skid_is_silent_in_the_air():
+    assert run_module(LockedWheel(), flying(brake_left=1.0), ctx=AIR).is_empty
 
 
 # --- Shimmy --------------------------------------------------------------

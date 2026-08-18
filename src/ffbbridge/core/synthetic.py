@@ -341,6 +341,11 @@ class SyntheticFlight:
             surface_type=surface,
             contact_compression=compression,
             wheel_rpm_center=gs * 12.0 if on_ground else 0.0,
+            # The mains turn with the centre wheel: the scripted sortie brakes
+            # firmly on the rollout but never locks a tyre, so this is what a
+            # clean stop looks like to anything watching for a skid.
+            wheel_rpm_left=gs * 12.0 if on_ground else 0.0,
+            wheel_rpm_right=gs * 12.0 if on_ground else 0.0,
             eng_rpm=(rpm,),
             prop_rpm=(rpm,),
             eng_combustion=(running,),

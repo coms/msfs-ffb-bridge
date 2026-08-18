@@ -28,6 +28,7 @@ class BrakeShudder(EffectModule):
         ParamSpec("skid_threshold", 0.82, 0.3, 1.0, "Brake input where the stutter starts", ""),
         ParamSpec("skid_hz", 6.5, 2.0, 20.0, "Stutter frequency", "Hz"),
         ParamSpec("full_speed_kt", 50.0, 5.0, 150.0, "Speed for full intensity", "kt"),
+        ParamSpec("differential", 0.18, 0.0, 1.0, "Pull from uneven braking", ""),
     )
 
     def update(
@@ -72,8 +73,11 @@ class BrakeShudder(EffectModule):
                 priority=self.priority + 5,
             )
 
-        # Asymmetric braking pulls the nosewheel toward the braked side.
+        # Asymmetric braking pulls the nosewheel toward the braked side. It is a
+        # force in the steering rather than one that comes up through the gear,
+        # so it goes with the rudder when the wheel is not carrying it.
         differential = tel.brake_right - tel.brake_left
-        contribution.constant += clamp(differential * speed_factor * 0.18)
+        pull = differential * speed_factor * self.p("differential") * ctx.ground_weight
+        contribution.constant += clamp(pull)
 
         return contribution

@@ -57,6 +57,7 @@ cannot flip the axis back and forth.
 | `engine_vibration` | Blade-pass hum tracking RPM, idle shake, roughness with an engine out |
 | `turbulence` | Gust jolts high-passed from body accelerations, plus wind-scaled chop |
 | `prop_wash` | The left swing under power at low speed, plus slipstream burble |
+| `skid` | Skip and pull when a tyre stops rolling under heavy braking |
 | `crosswind` | Weathervaning on the ground, sideslip-driven roll in the air |
 | `control_loading` | Centring force growing with the square of airspeed, offset by trim |
 | `soft_lock` | An end stop at the travel the profile allows, so the rim stops where the aeroplane's controls would |

@@ -18,6 +18,7 @@ from .ground_roll import GroundRoll
 from .handoff import HandoffAssist
 from .prop_wash import PropWash
 from .shimmy import NosewheelShimmy
+from .skid import LockedWheel
 from .soft_lock import SoftLock
 from .steering_feel import SteeringFeel
 from .touchdown import Touchdown
@@ -31,6 +32,7 @@ MODULE_REGISTRY: tuple[type[EffectModule], ...] = (
     GroundRoll,
     Touchdown,
     BrakeShudder,
+    LockedWheel,
     NosewheelShimmy,
     SteeringFeel,
     GearTransit,
@@ -52,6 +54,7 @@ __all__ = [
     "GroundRoll",
     "Touchdown",
     "BrakeShudder",
+    "LockedWheel",
     "NosewheelShimmy",
     "SteeringFeel",
     "GearTransit",
