@@ -9,6 +9,7 @@ hardest to spot by feel would live.
 from __future__ import annotations
 
 import ctypes
+import logging
 
 import pytest
 
@@ -20,8 +21,11 @@ from ffbbridge.io import ffb_effects as fx
 from ffbbridge.io.axis_out import AXIS_FULL_SCALE, AxisOutput, to_axis_units
 from ffbbridge.io.ffb_sdl import DeviceInfo, HapticCapabilities, select_device
 from ffbbridge.io.simconnect_client import (
+    EVENT_FLAG_GROUPID_IS_PRIORITY,
+    GROUP_PRIORITY_HIGHEST,
     SIMCONNECT_RECV_SIMOBJECT_DATA,
     SIMOBJECT_DATA_OFFSET,
+    SimConnectClient,
     find_simconnect_dll,
 )
 from ffbbridge.io.simvars import (
@@ -271,6 +275,75 @@ def test_simobject_payload_offset_matches_the_struct():
 
 def test_dll_discovery_returns_nothing_rather_than_raising():
     assert find_simconnect_dll("/definitely/not/here/SimConnect.dll") is None
+
+
+# --- Talking to the simulator --------------------------------------------
+
+
+class FakeDll:
+    """Records the arguments the client passes to SimConnect."""
+
+    def __init__(self, result=0):
+        self.result = result
+        self.calls: list[tuple] = []
+        self.packet_id = 100
+
+    def __getattr__(self, name):
+        def call(*args):
+            self.calls.append((name, args))
+            if name == "SimConnect_GetLastSentPacketID":
+                self.packet_id += 1
+                args[1]._obj.value = self.packet_id
+                return 0
+            return self.result
+
+        return call
+
+
+def connected_client(dll):
+    client = SimConnectClient()
+    client._dll = dll
+    client._handle = ctypes.c_void_p(1)
+    return client
+
+
+def test_axis_events_are_sent_at_a_priority_not_to_a_notification_group():
+    """The group argument is a priority only if it is flagged as one.
+
+    Without the flag the simulator reads it as the id of a notification group
+    this client never creates, answers every event with UNRECOGNIZED_ID, and
+    drops it -- silently, as far as the wheel is concerned, sixty times a
+    second.
+    """
+    dll = FakeDll()
+    client = connected_client(dll)
+    event_id = client.map_event("AXIS_AILERONS_SET")
+    assert client.transmit(event_id, 4096)
+
+    _, args = next(c for c in dll.calls if c[0] == "SimConnect_TransmitClientEvent")
+    assert args[4] == GROUP_PRIORITY_HIGHEST
+    assert args[5] == EVENT_FLAG_GROUPID_IS_PRIORITY
+
+
+def test_a_rejected_packet_is_named_rather_than_numbered():
+    dll = FakeDll()
+    client = connected_client(dll)
+    event_id = client.map_event("AXIS_AILERONS_SET")
+    client.transmit(event_id, 4096)
+
+    assert client._describe(dll.packet_id) == "AXIS_AILERONS_SET"
+    assert client._describe(999999) == "send id 999999"
+
+
+def test_a_fault_in_the_send_loop_is_not_logged_forty_thousand_times(caplog):
+    """It repeats at the send rate, and buries its own first occurrence."""
+    client = SimConnectClient()
+    with caplog.at_level(logging.WARNING):
+        for _ in range(5000):
+            client._complain("simulator reported %s for %s", "UNRECOGNIZED_ID", "AXIS_RUDDER_SET")
+
+    assert len(caplog.records) == 4  # the first, then 10, 100 and 1000
+    assert "UNRECOGNIZED_ID" in caplog.records[0].message
 
 
 # --- Axis injection ------------------------------------------------------

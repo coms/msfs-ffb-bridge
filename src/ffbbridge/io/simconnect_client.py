@@ -18,6 +18,7 @@ import logging
 import os
 import sys
 from ctypes import byref, c_char_p, c_double, c_float, c_int, c_long, c_void_p
+from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -46,12 +47,23 @@ DEFINE_IDENT = 2
 REQUEST_NUMERIC = 1
 REQUEST_IDENT = 2
 
+#: How many recently sent packets to keep named, for reporting rejections.
+RECENT_PACKETS = 64
+
 EVENT_PAUSE = 1000
 EVENT_SIM = 1001
 FIRST_AXIS_EVENT = 2000
 
-GROUP_AXIS = 1
+#: Priority to transmit axis events at, ahead of anything else claiming them.
 GROUP_PRIORITY_HIGHEST = 1
+
+#: Tells the simulator to read the group argument of TransmitClientEvent as a
+#: priority rather than as the id of a notification group.
+#:
+#: Without it the same 1 means "notification group number one", which is a group
+#: this client never creates, and every event sent is answered with
+#: UNRECOGNIZED_ID and dropped. Transmitting at a priority needs no group.
+EVENT_FLAG_GROUPID_IS_PRIORITY = 0x00000010
 
 OBJECT_ID_USER = 0
 
@@ -254,7 +266,12 @@ class SimConnectClient:
         self._specs: list[SimVarSpec] = list(NUMERIC_VARS)
         self._pending: dict[int, SimVarSpec] = {}
         """Send IDs of AddToDataDefinition calls, so a rejection names its variable."""
+        self._recent: deque[tuple[int, str]] = deque(maxlen=RECENT_PACKETS)
+        """Send IDs of everything else, so a rejection can name that too."""
+        self._complaints: dict[str, int] = {}
+        """How many times each distinct rejection has been seen."""
         self._events: dict[str, int] = {}
+        self._event_names: dict[int, str] = {}
         self._next_event_id = FIRST_AXIS_EVENT
 
         self.latest: FlightTelemetry | None = None
@@ -440,13 +457,17 @@ class SimConnectClient:
             0,
             0,
         )
+        self._note_packet("the request for the telemetry block")
         # The aircraft only changes when a flight is loaded, so once a second is
         # ample and keeps the strings out of the fast path.
         dll.SimConnect_RequestDataOnSimObject(
             self._handle, REQUEST_IDENT, DEFINE_IDENT, OBJECT_ID_USER, PERIOD_SECOND, 0, 0, 0, 0
         )
+        self._note_packet("the request for the aircraft name")
         dll.SimConnect_SubscribeToSystemEvent(self._handle, EVENT_PAUSE, b"Pause")
+        self._note_packet("the subscription to Pause")
         dll.SimConnect_SubscribeToSystemEvent(self._handle, EVENT_SIM, b"Sim")
+        self._note_packet("the subscription to Sim")
 
     # --- Message pump -----------------------------------------------------
 
@@ -511,6 +532,41 @@ class SimConnectClient:
             # menu, a loading screen, or the end of a flight.
             self.paused = not bool(event.dwData)
 
+    def _note_packet(self, description: str) -> None:
+        """Remember what the packet just sent was, so a rejection can name it.
+
+        Without this a rejected axis event is a bare send id, which says only
+        that something the simulator did not recognise happened sixty times a
+        second. It is one call and it is what turns a mystery into a sentence.
+        """
+        dll = self._dll
+        if dll is None:
+            return
+        send_id = DWORD()
+        if dll.SimConnect_GetLastSentPacketID(self._handle, byref(send_id)) == S_OK:
+            self._recent.append((send_id.value, description))
+
+    def _describe(self, send_id: int) -> str:
+        for known_id, description in self._recent:
+            if known_id == send_id:
+                return description
+        return f"send id {send_id}"
+
+    def _complain(self, message: str, *args) -> None:
+        """Log a repeating fault once, then only on powers of ten.
+
+        A fault in the send loop repeats at the send rate. Logging every one of
+        them buries the reason it started under a hundred thousand copies of
+        itself, and a log nobody can read is a log nobody reads.
+        """
+        rendered = message % args
+        seen = self._complaints.get(rendered, 0) + 1
+        self._complaints[rendered] = seen
+        if seen == 1:
+            LOGGER.warning("%s", rendered)
+        elif seen in (10, 100, 1000, 10000):
+            LOGGER.warning("%s (%d times now)", rendered, seen)
+
     def _on_exception(self, pointer) -> bool:
         """Note a rejected variable. Returns whether the definition needs rebuilding."""
         exception = ctypes.cast(pointer, ctypes.POINTER(SIMCONNECT_RECV_EXCEPTION)).contents
@@ -519,7 +575,7 @@ class SimConnectClient:
         name = EXCEPTION_NAMES.get(exception.dwException, str(exception.dwException))
 
         if spec is None:
-            LOGGER.warning("simulator reported %s (send id %d)", name, exception.dwSendID)
+            self._complain("simulator reported %s for %s", name, self._describe(exception.dwSendID))
             return False
 
         LOGGER.warning("the simulator rejected %r (%s); dropping it", spec.name, name)
@@ -554,7 +610,9 @@ class SimConnectClient:
         ):
             LOGGER.warning("could not map the event %s", name)
             return -1
+        self._note_packet(f"the mapping of {name}")
         self._events[name] = event_id
+        self._event_names[event_id] = name
         return event_id
 
     def transmit(self, event_id: int, value: int) -> bool:
@@ -566,17 +624,20 @@ class SimConnectClient:
         """
         if not self.connected or self._dll is None or event_id < 0:
             return False
-        return (
+        sent = (
             self._dll.SimConnect_TransmitClientEvent(
                 self._handle,
                 OBJECT_ID_USER,
                 event_id,
                 DWORD(value & 0xFFFFFFFF),
-                GROUP_AXIS,
-                0,
+                GROUP_PRIORITY_HIGHEST,
+                EVENT_FLAG_GROUPID_IS_PRIORITY,
             )
             == S_OK
         )
+        if sent:
+            self._note_packet(self._event_names.get(event_id, f"event {event_id}"))
+        return sent
 
 
 def _read_fixed_string(address: int, size: int) -> str:
