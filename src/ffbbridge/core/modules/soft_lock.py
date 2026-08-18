@@ -20,22 +20,31 @@ class SoftLock(EffectModule):
 
     It is a wall rather than a spring: nothing happens inside the limit, so the
     centring the aircraft actually has is left alone, and past it the force ramps
-    up over a few degrees instead of arriving as a step. A little damping goes
-    with it, because a hard stop with no damping is a bounce.
+    up over a few degrees instead of arriving as a step, then keeps building the
+    further you push. A little damping goes with it, because a hard stop with no
+    damping is a bounce.
 
-    The wall is still only as strong as the safety limits allow, which is why it
-    is soft: shove hard enough and it yields rather than fighting you.
+    The master strength does not scale it, unlike every other steady force. A
+    stop softened to a third of itself is not a soft stop, it is a shove you
+    push straight through, and someone who turns the whole force model down to
+    something comfortable has not asked for their control travel to grow. The
+    safety ceiling still applies, which is what makes it soft: lean hard enough
+    and it yields rather than fighting you.
     """
 
     id = "soft_lock"
     name = "Soft lock"
     description = "A progressive end stop at the wheel travel the profile allows."
     priority = 90
+    ignores_master_gain = True
     params = (
         ParamSpec("strength", 0.9, 0.0, 1.0, "Force at the stop", ""),
         ParamSpec("ramp_deg", 8.0, 1.0, 90.0, "Travel the stop builds over", "deg"),
         ParamSpec("damping", 0.45, 0.0, 1.0, "Resistance past the stop", ""),
     )
+
+    #: How far past the ramp the wall goes on stiffening, in ramps.
+    LEAN_RAMPS = 3.0
 
     def update(
         self, tel: FlightTelemetry, wheel: WheelState, ctx: TickContext, dt: float
@@ -53,7 +62,14 @@ class SoftLock(EffectModule):
         ramp = max(ctx.degrees_to_axis(self.p("ramp_deg")), 1e-4)
         depth = smoothstep(overshoot, 0.0, ramp)
 
-        contribution.constant = -math.copysign(self.p("strength") * depth, wheel.position)
+        # Past the ramp the wall keeps stiffening rather than sitting at one
+        # value. A force that stops growing is one you learn to push through;
+        # a stop should feel firmer the harder you lean on it.
+        strength = self.p("strength")
+        lean = clamp(overshoot / (ramp * self.LEAN_RAMPS), 0.0, 1.0)
+        level = strength + (1.0 - strength) * lean
+
+        contribution.constant = -math.copysign(level * depth, wheel.position)
 
         damping = self.p("damping") * depth
         if damping > 1e-4:

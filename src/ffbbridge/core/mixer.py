@@ -100,6 +100,8 @@ class EffectMixer:
         diagnostics.envelope = self._envelope
 
         constant = 0.0
+        ungained = 0.0
+        """Steady force from modules that opt out of the master strength."""
         springs: list[Spring] = []
         dampers: list[Damper] = []
         periodics: list[Periodic] = []
@@ -117,7 +119,10 @@ class EffectMixer:
             if contribution is None or contribution.is_empty:
                 continue
             gain = module.gain
-            constant += contribution.constant * gain
+            if module.ignores_master_gain:
+                ungained += contribution.constant * gain
+            else:
+                constant += contribution.constant * gain
             breakdown[module.id] = contribution.constant * gain
             if contribution.spring is not None:
                 springs.append(_scale_spring(contribution.spring, gain))
@@ -130,8 +135,11 @@ class EffectMixer:
 
         master = clamp(self.safety.master_gain, 0.0, 1.0) * self._envelope
 
-        # Steady channel: gained, clamped, then rate limited.
-        steady = clamp(constant * master, -self.safety.max_force, self.safety.max_force)
+        # Steady channel: gained, clamped, then rate limited. A control stop
+        # skips the master strength but not the envelope, so it still goes quiet
+        # with everything else when the sim is paused or the telemetry stops.
+        steady = constant * master + ungained * self._envelope
+        steady = clamp(steady, -self.safety.max_force, self.safety.max_force)
         steady = self._slew.update(steady, dt)
 
         hardware, software = self._allocate_periodics(periodics)

@@ -108,6 +108,34 @@ def test_master_gain_scales_everything():
     assert output.damper.coefficient == pytest.approx(0.2)
 
 
+def test_a_control_stop_is_not_scaled_by_the_master_strength():
+    """Turning the force model down must not quietly widen the control travel.
+
+    Master strength is taste; a stop is not. Softened to a third it stops being
+    a stop, which is exactly how it was reported broken.
+    """
+    stop = FakeModule("stop", Contribution(constant=0.9))
+    stop.ignores_master_gain = True
+    ordinary = FakeModule("ordinary", Contribution(constant=0.9))
+
+    safety = SafetyConfig(master_gain=0.32, max_force=1.0, max_slew_per_s=1000.0)
+    assert run(make_mixer([stop], safety=safety), ticks=50).constant == pytest.approx(0.9)
+    assert run(make_mixer([ordinary], safety=safety), ticks=50).constant == pytest.approx(0.288)
+
+
+def test_a_control_stop_still_obeys_the_ceiling_and_the_envelope():
+    """Opting out of taste is not opting out of safety."""
+    stop = FakeModule("stop", Contribution(constant=0.9))
+    stop.ignores_master_gain = True
+
+    safety = SafetyConfig(master_gain=1.0, max_force=0.5, max_slew_per_s=1000.0)
+    assert run(make_mixer([stop], safety=safety), ticks=50).constant == pytest.approx(0.5)
+
+    stale = TickContext(telemetry_stale=True)
+    faded = run(make_mixer([stop]), ticks=400, ctx=stale)
+    assert faded.constant == pytest.approx(0.0, abs=1e-3)
+
+
 def test_total_force_is_clamped_and_reported():
     mixer = make_mixer(
         [FakeModule("a", Contribution(constant=5.0))],

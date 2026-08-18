@@ -638,6 +638,22 @@ def test_soft_lock_builds_over_the_ramp_rather_than_stepping():
     assert forces[0] < forces[-1]
 
 
+def test_soft_lock_keeps_stiffening_the_further_it_is_pushed():
+    """A force that stops growing is one you learn to push straight through."""
+
+    def force(position):
+        contribution = run_module(
+            SoftLock(), taxiing(), ctx=SOFT_LOCK_180, wheel=WheelState(position=position)
+        )
+        return -contribution.constant
+
+    # Past the ramp, where the old shape had already flattened off. The stop
+    # is at 0.333 and the ramp is worth 0.030 of travel, so these are all
+    # leaning on a wall the old version held at a constant 0.9.
+    assert force(0.37) < force(0.39) < force(0.41)
+    assert force(0.45) == pytest.approx(1.0, abs=0.01)
+
+
 def test_soft_lock_damps_only_once_past_the_stop():
     inside = run_module(SoftLock(), taxiing(), ctx=SOFT_LOCK_180, wheel=WheelState(position=0.2))
     outside = run_module(SoftLock(), taxiing(), ctx=SOFT_LOCK_180, wheel=WheelState(position=0.6))

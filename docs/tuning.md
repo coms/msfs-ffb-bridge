@@ -81,9 +81,14 @@ Two things follow from turning it on:
   therefore makes the ground axis noticeably more sensitive than the 0.7 of a
   540° wheel it would otherwise use — that is the trade, and it is why a narrow
   lock wants a little more `expo`.
-- The stop is soft on purpose. It is a force like any other, so it is bounded by
-  the master strength and the force ceiling; shove hard and it yields. Nothing
-  here can hold the rim against a determined arm, and it should not try to.
+- The stop ignores the **master strength**, alone among the steady forces. Turn
+  the force model down to something comfortable and a stop scaled with it stops
+  being a stop — at 30% it is a nudge you push straight through, and your
+  control travel has quietly grown. It is still bounded by the **force ceiling**,
+  which is what makes it soft: lean hard and it yields. If the stop is too
+  strong, lower the ceiling or the effect's own *Force at the stop*; turning the
+  master down will not do it. Nothing here can hold the rim against a determined
+  arm, and it should not try to.
 
 The `soft_lock` effect has the usual three knobs: *Force at the stop*, *Travel
 the stop builds over* (8 degrees by default — the wall ramps in rather than

@@ -49,6 +49,15 @@ class EffectModule:
     params: tuple[ParamSpec, ...] = ()
     #: Whether the effect is on in a fresh profile.
     default_enabled: bool = True
+    #: Exempt this module's steady force from the master strength.
+    #:
+    #: Master strength is a matter of taste: it makes the whole force model
+    #: gentler or firmer to suit the person holding the wheel. A control stop is
+    #: not a matter of taste -- softened to a third it is not a stop, it is a
+    #: nudge you push through without noticing -- so the few effects that exist
+    #: to say "no further" opt out of it. The safety ceiling and the fade-out
+    #: envelope still apply, because those are safety rather than taste.
+    ignores_master_gain: bool = False
     #: Starting strength in a fresh profile.
     default_gain: float = 1.0
 
