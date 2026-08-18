@@ -38,6 +38,9 @@ class EngineStatus:
 
     profile_name: str = "Default GA"
     aircraft: str = ""
+    aircraft_title: str = ""
+    """Raw title, kept separate from the display name so it can be matched on."""
+    aircraft_model: str = ""
     stale: bool = False
     ticks: int = 0
     module_errors: dict[str, str] = field(default_factory=dict)
@@ -204,6 +207,8 @@ class BridgeEngine:
             return
         self._aircraft_key = key
         self.status.aircraft = tel.title or tel.atc_model
+        self.status.aircraft_title = tel.title
+        self.status.aircraft_model = tel.atc_model
         config = self._resolve_config(tel.title, tel.atc_model)
         self._build(config)
         self.reset(on_ground=tel.on_ground)

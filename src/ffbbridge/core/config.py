@@ -10,7 +10,9 @@ never means editing a config schema.
 
 from __future__ import annotations
 
+import copy
 import fnmatch
+import glob
 import json
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -338,6 +340,16 @@ class BridgeConfig:
         )
 
 
+def aircraft_pattern(name: str) -> str:
+    """A match pattern that means this aeroplane and no other.
+
+    Aircraft titles are not glob-safe -- "Cessna 152 [G1000]" reads as a
+    character class and would match nothing, least of all itself -- so the
+    wildcards are escaped out of the name before it becomes a pattern.
+    """
+    return glob.escape(name.strip())
+
+
 @dataclass(slots=True)
 class ProfileSet:
     """A default profile plus any number of aircraft-specific overrides."""
@@ -351,6 +363,31 @@ class ProfileSet:
             if profile.matches(title, atc_model):
                 return profile
         return self.default
+
+    def set_for_aircraft(
+        self, config: BridgeConfig, title: str, atc_model: str = ""
+    ) -> BridgeConfig:
+        """Store settings against one aircraft and return what was stored.
+
+        Saving the same aircraft again replaces its profile where it stands
+        rather than growing a second one. A new profile goes to the front of the
+        list, because the point of tuning one aeroplane is that it should win
+        over the family profile that was covering it until now.
+
+        What is stored is a snapshot. ``replace`` alone would leave the profile
+        sharing its safety, wheel and module objects with the configuration the
+        bridge is still editing, so every later slider move would silently
+        rewrite a profile nobody asked to change.
+        """
+        name = title or atc_model
+        pattern = aircraft_pattern(name)
+        stored = replace(copy.deepcopy(config), name=name or config.name, match=[pattern])
+        for index, existing in enumerate(self.profiles):
+            if existing.match == [pattern]:
+                self.profiles[index] = stored
+                return stored
+        self.profiles.insert(0, stored)
+        return stored
 
     def to_dict(self) -> dict[str, Any]:
         return {

@@ -120,3 +120,63 @@ def test_soft_lock_survives_the_round_trip_and_reads_as_a_fraction():
     assert wheel.soft_lock_fraction == 1 / 3
     assert WheelConfig.from_dict(wheel.to_dict()) == wheel
     assert WheelConfig().soft_lock_fraction == 0.0
+
+def test_saving_for_an_aircraft_beats_the_family_profile_covering_it():
+    profiles = ProfileSet()
+    profiles.profiles.append(BridgeConfig(name="Airliners", match=["*a320*"]))
+
+    tuned = BridgeConfig(name="live")
+    tuned.wheel.rotation_deg = 1080.0
+    stored = profiles.set_for_aircraft(tuned, "Airbus A320neo Cabin", "A20N")
+
+    assert profiles.select("Airbus A320neo Cabin", "A20N") is stored
+    assert stored.wheel.rotation_deg == 1080.0
+    # Another A320 that is not this one keeps the family settings.
+    assert profiles.select("Airbus A320 Sharklets", "A320").name == "Airliners"
+
+
+def test_saving_the_same_aircraft_twice_updates_it_in_place():
+    profiles = ProfileSet()
+    config = BridgeConfig()
+    profiles.set_for_aircraft(config, "Cessna 172", "C172")
+    config.safety.master_gain = 0.4
+    profiles.set_for_aircraft(config, "Cessna 172", "C172")
+
+    assert len(profiles.profiles) == 1
+    assert profiles.profiles[0].safety.master_gain == 0.4
+
+
+def test_a_stored_profile_is_a_snapshot_not_a_live_view():
+    """Otherwise every slider moved afterwards edits a profile nobody chose."""
+    profiles = ProfileSet()
+    live = BridgeConfig()
+    stored = profiles.set_for_aircraft(live, "Cessna 172", "C172")
+
+    live.safety.master_gain = 0.1
+    live.module("skid").gain = 2.0
+
+    assert stored.safety.master_gain != 0.1
+    assert stored.module("skid").gain != 2.0
+
+
+def test_an_aircraft_title_with_glob_characters_still_matches_itself():
+    """MSFS titles contain brackets, which fnmatch reads as a character class."""
+    profiles = ProfileSet()
+    title = "Cessna 152 [G1000]"
+    stored = profiles.set_for_aircraft(BridgeConfig(), title, "C152")
+
+    assert profiles.select(title, "C152") is stored
+    assert profiles.select("Cessna 152 G", "C152").name != stored.name
+
+
+def test_a_saved_aircraft_profile_survives_a_round_trip(tmp_path):
+    profiles = ProfileSet()
+    tuned = BridgeConfig()
+    tuned.wheel.soft_lock_deg = 180.0
+    profiles.set_for_aircraft(tuned, "Cessna 152 [G1000]", "C152")
+
+    path = tmp_path / "profiles.json"
+    profiles.save(path)
+    reloaded = ProfileSet.load(path)
+
+    assert reloaded.select("Cessna 152 [G1000]", "C152").wheel.soft_lock_deg == 180.0

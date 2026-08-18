@@ -92,8 +92,22 @@ bouncing off it. Turn the effect off to keep the axis scaling but lose the wall.
 
 ## Per-aircraft profiles
 
-Profiles match on the aircraft title or its ATC model, with wildcards. The first
-match wins, and the default is used when nothing matches:
+The short way: load the aeroplane, tune it, and press **Save for this aircraft**
+on the Tuning tab. That writes a profile matched to the title the simulator
+reports and puts it in front of everything else, so it wins over any family
+profile that was covering the aircraft until now. Saving the same aircraft again
+updates that profile rather than adding a second one.
+
+**Save as default** is the other button, and it is the one to use for settings
+that should apply to anything you have not tuned individually — master strength,
+wheel rotation, which axis the wheel is.
+
+Both write a snapshot. Sliders moved after a save are not in the file until you
+press it again.
+
+The long way, and what the buttons are writing: profiles match on the aircraft
+title or its ATC model, with wildcards. The first match wins, and the default is
+used when nothing matches:
 
 ```json
 {

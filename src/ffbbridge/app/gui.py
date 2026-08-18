@@ -11,6 +11,7 @@ the runtime's snapshot and posts changes back through the command queue.
 
 from __future__ import annotations
 
+import copy
 import logging
 from pathlib import Path
 
@@ -181,9 +182,13 @@ class GuiApp:
     def _build_tuning_tab(self) -> None:
         config = self.runtime.engine.config
         with dpg.group(horizontal=True):
-            dpg.add_button(label="Save profile", callback=self._on_save)
-            dpg.add_button(label="Reload profile", callback=self._on_reload)
-            dpg.add_text(str(self.profile_path), color=COLOUR_DIM)
+            dpg.add_button(
+                label="Save for this aircraft", callback=self._on_save_for_aircraft, width=190
+            )
+            dpg.add_button(label="Save as default", callback=self._on_save_default, width=150)
+            dpg.add_button(label="Reload profile", callback=self._on_reload, width=140)
+        dpg.add_text("", tag="save_status", color=COLOUR_DIM, wrap=1000)
+        dpg.add_text(str(self.profile_path), color=COLOUR_DIM)
 
         dpg.add_separator()
         dpg.add_text("Overall")
@@ -455,14 +460,51 @@ class GuiApp:
         self.runtime.set_bench(None)
         dpg.set_value("bench_status", "Stopped.")
 
-    def _on_save(self) -> None:
-        profiles = self.runtime.profiles
-        profiles.default = self.runtime.engine.config
+    def _on_save_for_aircraft(self) -> None:
+        """Keep these settings for the aeroplane currently loaded, and no other.
+
+        A profile written here goes in front of any family profile that was
+        covering the aircraft until now, so tuning one type does not quietly
+        become tuning all of them.
+        """
+        status = self.runtime.engine.status
+        title = status.aircraft_title or status.aircraft_model
+        if not title:
+            self._report_save("No aircraft loaded yet, so there is nothing to attach this to.")
+            return
+
+        config = self.runtime.engine.config
+        stored = self.runtime.profiles.set_for_aircraft(
+            config, status.aircraft_title, status.aircraft_model
+        )
+        # The live config is a copy, so the engine has to be told its new name
+        # or the status bar keeps showing the profile this one replaced.
+        self.runtime.post(lambda: self._rename_live(stored.name))
+        self._write(f"Saved for {stored.name}.")
+
+    def _on_save_default(self) -> None:
+        """Keep these settings as the fallback for anything unrecognised."""
+        # A snapshot, for the same reason the per-aircraft save takes one.
+        self.runtime.profiles.default = copy.deepcopy(self.runtime.engine.config)
+        self.runtime.post(lambda: self._rename_live(self.runtime.profiles.default.name))
+        self._write("Saved as the default profile.")
+
+    def _rename_live(self, name: str) -> None:
+        self.runtime.engine.config.name = name
+        self.runtime.engine.status.profile_name = name
+
+    def _write(self, message: str) -> None:
         try:
-            profiles.save(self.profile_path)
-            LOGGER.info("saved profile to %s", self.profile_path)
+            self.runtime.profiles.save(self.profile_path)
         except OSError as exc:
             LOGGER.error("could not save the profile: %s", exc)
+            self._report_save(f"Could not write {self.profile_path}: {exc}")
+            return
+        LOGGER.info("%s (%s)", message, self.profile_path)
+        self._report_save(message)
+
+    def _report_save(self, message: str) -> None:
+        dpg.set_value("save_status", message)
 
     def _on_reload(self) -> None:
         path = Path(self.profile_path)
