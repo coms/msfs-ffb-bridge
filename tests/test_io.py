@@ -26,6 +26,7 @@ from ffbbridge.io.simconnect_client import (
     SIMCONNECT_RECV_SIMOBJECT_DATA,
     SIMOBJECT_DATA_OFFSET,
     SimConnectClient,
+    _read_fixed_string,
     find_simconnect_dll,
 )
 from ffbbridge.io.simvars import (
@@ -277,6 +278,29 @@ def test_dll_discovery_returns_nothing_rather_than_raising():
     assert find_simconnect_dll("/definitely/not/here/SimConnect.dll") is None
 
 
+def _address_of(raw: bytes, size: int) -> int:
+    buf = raw.ljust(size, b"\0")
+    return ctypes.cast(ctypes.c_char_p(buf), ctypes.c_void_p).value
+
+
+def test_read_fixed_string_rejects_uninitialised_memory():
+    """ATC MODEL on some default aircraft comes back as junk, not a clean blank.
+
+    A field that registers fine but that the simulator has no real value for
+    can answer with whatever was already in memory rather than NUL padding.
+    That must not be trusted as real text -- using it as part of an
+    aircraft's identity would make that identity flicker on every refresh.
+    """
+    for garbage in (b"K\xff\xff\xff\xff", b"p\xff\xff\xff", b"\xff\xff\x14\xff"):
+        assert _read_fixed_string(_address_of(garbage, 256), 256) == ""
+
+
+def test_read_fixed_string_keeps_real_text():
+    address = _address_of(b"C172SP G1000 Passengers", 256)
+    assert _read_fixed_string(address, 256) == "C172SP G1000 Passengers"
+    assert _read_fixed_string(_address_of(b"", 256), 256) == ""
+
+
 # --- Talking to the simulator --------------------------------------------
 
 
@@ -344,6 +368,73 @@ def test_a_fault_in_the_send_loop_is_not_logged_forty_thousand_times(caplog):
 
     assert len(caplog.records) == 4  # the first, then 10, 100 and 1000
     assert "UNRECOGNIZED_ID" in caplog.records[0].message
+
+
+def test_a_refused_effect_is_offered_again_rather_than_given_up_on(monkeypatch):
+    """One refusal used to cost the spring and damper for the whole flight.
+
+    A wheel refuses an effect for reasons that pass -- another application
+    holding it, a device still settling -- and going quiet until the next
+    restart is a worse answer than trying again in a few seconds.
+    """
+    from ffbbridge.io import ffb_sdl
+
+    calls = {"new": 0}
+    refusing = True
+
+    class FakeHaptic:
+        SDL_HAPTIC_CONSTANT = ffb_sdl.sdl_haptic.SDL_HAPTIC_CONSTANT
+
+        @staticmethod
+        def SDL_HapticNewEffect(handle, effect):
+            calls["new"] += 1
+            return -1 if refusing else 7
+
+        @staticmethod
+        def SDL_HapticRunEffect(handle, effect_id, length):
+            return 0
+
+    monkeypatch.setattr(ffb_sdl, "sdl_haptic", FakeHaptic)
+    monkeypatch.setattr(ffb_sdl, "_sdl_error", lambda: "busy")
+
+    output = ffb_sdl.HapticOutput()
+    output._haptic = object()
+    output._retry_after = 0.0
+
+    effect = fx.build_constant(0.5)
+    output._upsert("__constant__", effect)
+    assert calls["new"] == 1
+    assert "__constant__" in output._failed_labels
+
+    refusing = False
+    output._upsert("__constant__", effect)
+    assert calls["new"] == 2
+    assert output._failed_labels == {}
+    assert "__constant__" in output.active_effects
+
+
+def test_a_refusal_that_means_it_is_not_retried_immediately(monkeypatch):
+    from ffbbridge.io import ffb_sdl
+
+    calls = {"new": 0}
+
+    class FakeHaptic:
+        SDL_HAPTIC_CONSTANT = ffb_sdl.sdl_haptic.SDL_HAPTIC_CONSTANT
+
+        @staticmethod
+        def SDL_HapticNewEffect(handle, effect):
+            calls["new"] += 1
+            return -1
+
+    monkeypatch.setattr(ffb_sdl, "sdl_haptic", FakeHaptic)
+    monkeypatch.setattr(ffb_sdl, "_sdl_error", lambda: "no")
+
+    output = ffb_sdl.HapticOutput()
+    output._haptic = object()
+
+    for _ in range(50):
+        output._upsert("__constant__", fx.build_constant(0.5))
+    assert calls["new"] == 1
 
 
 # --- Axis injection ------------------------------------------------------

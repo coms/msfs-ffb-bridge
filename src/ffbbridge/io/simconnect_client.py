@@ -278,6 +278,12 @@ class SimConnectClient:
         self.paused = False
         self.title = ""
         self.atc_model = ""
+        self._ident_fields = 0
+        """How many of TITLE/ATC MODEL actually registered. Reading a field that
+        was rejected would mean reading past the end of what the simulator
+        actually sent back -- whatever heap memory happens to follow, which
+        changes from message to message and looks exactly like the aircraft's
+        identity flickering every second."""
         self._elapsed = 0.0
 
     # --- Connection -------------------------------------------------------
@@ -438,10 +444,15 @@ class SimConnectClient:
                 self._pending[send_id.value] = spec
 
         dll.SimConnect_ClearDataDefinition(self._handle, DEFINE_IDENT)
+        self._ident_fields = 0
         for name in (b"TITLE", b"ATC MODEL"):
-            dll.SimConnect_AddToDataDefinition(
+            result = dll.SimConnect_AddToDataDefinition(
                 self._handle, DEFINE_IDENT, name, None, DATATYPE_STRING256, 0.0, 0
             )
+            if result != S_OK:
+                LOGGER.warning("could not add %s to the identity definition", name.decode())
+                break
+            self._ident_fields += 1
 
     def _subscribe(self) -> None:
         dll = self._dll
@@ -520,8 +531,10 @@ class SimConnectClient:
             )
             self.status.samples += 1
         elif data.dwRequestID == REQUEST_IDENT:
-            self.title = _read_fixed_string(base, 256)
-            self.atc_model = _read_fixed_string(base + 256, 256)
+            if self._ident_fields >= 1:
+                self.title = _read_fixed_string(base, 256)
+            if self._ident_fields >= 2:
+                self.atc_model = _read_fixed_string(base + 256, 256)
 
     def _on_event(self, pointer) -> None:
         event = ctypes.cast(pointer, ctypes.POINTER(SIMCONNECT_RECV_EVENT)).contents
@@ -641,9 +654,22 @@ class SimConnectClient:
 
 
 def _read_fixed_string(address: int, size: int) -> str:
-    """Read a fixed-width, NUL-padded string out of a returned data block."""
+    """Read a fixed-width, NUL-padded string out of a returned data block.
+
+    Seen in the wild on ATC MODEL for some default aircraft: the field
+    registers and the simulator answers every request for it, but the bytes
+    it sends back are uninitialised memory rather than a clean, NUL-padded
+    blank. That is indistinguishable from a real string at this level, so it
+    has to be caught here -- unprintable content or a UTF-8 decode failure
+    is treated as no value at all rather than trusted, since acting on it
+    would mean an aircraft's identity, and everything keyed off it, changing
+    on every refresh for no real reason.
+    """
     raw = ctypes.string_at(address, size)
-    return raw.split(b"\0", 1)[0].decode("utf-8", "replace").strip()
+    text = raw.split(b"\0", 1)[0].decode("utf-8", "replace").strip()
+    if not text.isprintable() or "�" in text:
+        return ""
+    return text
 
 
 __all__ = [

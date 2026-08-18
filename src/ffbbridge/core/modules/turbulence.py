@@ -17,18 +17,24 @@ class Turbulence(EffectModule):
     axis and no roll rate, so those drop out and only the disturbances survive.
     That means the effect is automatically correct for wake turbulence, thermals,
     gusts on approach and a hamfisted control input, without special cases.
+
+    The background chop is scaled by the crosswind component of the reported
+    wind, not its raw speed, the same figure the crosswind module weathervanes
+    from. A wind straight down the runway does not buffet a wing the way one
+    hitting it from the side does, so a 20 knot headwind and a 20 knot crosswind
+    should not sound the same, and only one of them used to.
     """
 
     id = "turbulence"
     name = "Turbulence"
-    description = "Gust jolts high-passed from body accelerations, plus wind-scaled chop."
+    description = "Gust jolts high-passed from body accelerations, plus crosswind-scaled chop."
     priority = 30
     params = (
         ParamSpec("lateral_gain", 0.55, 0.0, 2.0, "Response to sideways jolts", ""),
         ParamSpec("vertical_gain", 0.30, 0.0, 2.0, "Response to vertical jolts", ""),
         ParamSpec("roll_gain", 0.40, 0.0, 2.0, "Response to being rolled by the air", ""),
-        ParamSpec("chop", 0.22, 0.0, 1.0, "Background chop in strong wind", ""),
-        ParamSpec("wind_ref_kt", 28.0, 5.0, 80.0, "Wind speed for full chop", "kt"),
+        ParamSpec("chop", 0.22, 0.0, 1.0, "Background chop in strong crosswind", ""),
+        ParamSpec("wind_ref_kt", 28.0, 5.0, 80.0, "Crosswind speed for full chop", "kt"),
         ParamSpec("tau", 0.7, 0.1, 3.0, "How slow a change still counts as a gust", "s"),
     )
 
@@ -70,7 +76,7 @@ class Turbulence(EffectModule):
         )
 
         chop = self.p("chop") * map_range(
-            tel.wind_velocity_kt, 4.0, self.p("wind_ref_kt"), 0.0, 1.0
+            abs(tel.crosswind_kt), 4.0, self.p("wind_ref_kt"), 0.0, 1.0
         )
         # Chop needs airflow to exist: parked in a gale the wheel stays quiet.
         chop *= map_range(tel.ias_kt, 20.0, 80.0, 0.0, 1.0)

@@ -13,11 +13,18 @@ from __future__ import annotations
 
 import copy
 import logging
+import math
 from pathlib import Path
 
 import dearpygui.dearpygui as dpg
 
-from ..core.config import ROTATION_MAX_DEG, ROTATION_MIN_DEG, ProfileSet, WheelConfig
+from ..core.config import (
+    AILERON_CURVE_MAX,
+    ROTATION_MAX_DEG,
+    ROTATION_MIN_DEG,
+    ProfileSet,
+    WheelConfig,
+)
 from ..core.filters import clamp
 from ..core.modules import MODULE_REGISTRY
 from . import paths
@@ -109,6 +116,7 @@ class GuiApp:
             dpg.add_button(label="Force air axis", callback=lambda: self._override("force_air"))
             dpg.add_button(label="Automatic", callback=lambda: self._override("auto"))
             dpg.add_text("", tag="status_loop", color=COLOUR_DIM)
+        dpg.add_text("", tag="status_withheld", color=COLOUR_WARN, wrap=1080)
         dpg.add_separator()
 
     def _build_flying_tab(self) -> None:
@@ -238,6 +246,49 @@ class GuiApp:
             width=300,
             callback=lambda _s, value: self._set_soft_lock(value),
         )
+        dpg.add_slider_float(
+            tag="aileron_curve",
+            label="Aileron curve (0 linear, 5 sharpest)",
+            default_value=config.wheel.aileron_curve,
+            min_value=0.0,
+            max_value=AILERON_CURVE_MAX,
+            format="%.2f",
+            width=300,
+            callback=lambda _s, value: self._set_aileron_curve(value),
+        )
+        dpg.add_text(
+            "Sharpens the centre of the aileron axis only, the opposite of softening: small "
+            "roll inputs move further than linear, full deflection stays where it was. "
+            "Rudder and steering are not affected.",
+            wrap=900,
+            color=COLOUR_DIM,
+        )
+        dpg.add_checkbox(
+            label="Wheel turns the wrong way in the sim",
+            tag="invert_axis",
+            default_value=config.wheel.invert,
+            callback=lambda _s, value: self._set_invert_axis(value),
+        )
+        dpg.add_text(
+            "Tick this if turning right sends the yoke left in the sim. This flips aileron "
+            "and rudder/steering together, since both come off the same calibrated position "
+            "- it will not fix one without the other.",
+            wrap=900,
+            color=COLOUR_DIM,
+        )
+        dpg.add_checkbox(
+            label="Wheel pushes the wrong way",
+            tag="invert_force",
+            default_value=config.device.invert_force,
+            callback=lambda _s, value: self._set_invert_force(value),
+        )
+        dpg.add_text(
+            "Tick this if a steady push comes out backwards - the bench test 'Steady push "
+            "left' turning the rim clockwise is the giveaway. Everything steady depends on "
+            "it, and the soft lock inverted is a stop that shoves you through itself.",
+            wrap=900,
+            color=COLOUR_DIM,
+        )
         dpg.add_text("", tag="wheel_travel", color=COLOUR_DIM)
         self._refresh_wheel_travel(
             config.wheel, config.wheel.rotation_deg, config.wheel.soft_lock_deg
@@ -297,10 +348,17 @@ class GuiApp:
             color=COLOUR_DIM,
         )
         dpg.add_separator()
-        for test in BENCH_TESTS:
-            with dpg.group(horizontal=True):
-                dpg.add_button(label=test.name, width=220, callback=self._bench_callback(test.id))
-                dpg.add_text(test.description, wrap=740, color=COLOUR_DIM)
+        # The list scrolls and the Stop button does not. There are eleven tests
+        # with a paragraph each, which is taller than the window: leaving them
+        # loose put the last few, and the way to stop them, below the bottom
+        # edge where nobody would think to look for them.
+        with dpg.child_window(height=520):
+            for test in BENCH_TESTS:
+                with dpg.group(horizontal=True):
+                    dpg.add_button(
+                        label=test.name, width=220, callback=self._bench_callback(test.id)
+                    )
+                    dpg.add_text(test.description, wrap=700, color=COLOUR_DIM)
         dpg.add_separator()
         dpg.add_button(label="Stop", callback=lambda: self._stop_bench(), width=220)
         dpg.add_text("", tag="bench_status")
@@ -380,6 +438,24 @@ class GuiApp:
         dpg.set_value("wheel_soft_lock", soft_lock)
         self._refresh_wheel_travel(wheel, rotation, soft_lock)
 
+    def _set_invert_force(self, value: bool) -> None:
+        """Flip the direction of every steady force, live.
+
+        The device is handed this when it is opened, so the open device has to
+        be told as well or the setting waits for a reconnection to mean
+        anything -- which is no good when the whole point is to tick it, feel
+        the bench test reverse, and know it is right.
+        """
+        invert = bool(value)
+
+        def apply() -> None:
+            self.runtime.engine.config.device.invert_force = invert
+            haptic = self.runtime.haptic
+            if haptic is not None:
+                haptic.force_invert = invert
+
+        self.runtime.post(apply)
+
     def _set_axis_mode(self, label: str) -> None:
         """Choose what the wheel axis is, or let the bridge decide."""
         mode = _axis_mode_value(label)
@@ -394,6 +470,21 @@ class GuiApp:
         soft_lock = clamp(float(value), 0.0, wheel.rotation_deg)
         self.runtime.post(lambda: setattr(wheel, "soft_lock_deg", soft_lock))
         self._refresh_wheel_travel(wheel, wheel.rotation_deg, soft_lock)
+
+    def _set_aileron_curve(self, value: float) -> None:
+        wheel = self.runtime.engine.config.wheel
+        curve = clamp(float(value), 0.0, AILERON_CURVE_MAX)
+        self.runtime.post(lambda: setattr(wheel, "aileron_curve", curve))
+
+    def _set_invert_axis(self, value: bool) -> None:
+        """Flip which way the calibrated position reads, live.
+
+        Aileron and rudder/steering are both derived from the same shaped
+        position in the router, so this flips them together -- there is no way
+        to invert just one without the other short of a second flag.
+        """
+        wheel = self.runtime.engine.config.wheel
+        self.runtime.post(lambda: setattr(wheel, "invert", bool(value)))
 
     def _refresh_wheel_travel(
         self, wheel: WheelConfig, rotation: float, soft_lock: float
@@ -452,7 +543,8 @@ class GuiApp:
 
         started = time.perf_counter()
         self._bench_active = test_id
-        self.runtime.set_bench(lambda now: test.build(now - started))
+        config = self.runtime.engine.config
+        self.runtime.set_bench(lambda now, wheel: test.build(now - started, wheel, config))
         dpg.set_value("bench_status", f"Playing: {test.name}. Press Stop when you are done.")
 
     def _stop_bench(self) -> None:
@@ -568,6 +660,12 @@ class GuiApp:
             f"  {s.loop_hz:.0f} Hz{'  PANIC - force is cut' if s.panic else ''}"
             f"{'  telemetry stale' if s.stale and s.sim_connected else ''}",
         )
+        # The effect bars below show what the modules asked for. This is the
+        # line that says whether any of it was allowed out to the wheel.
+        dpg.set_value(
+            "status_withheld",
+            f"No force is reaching the wheel: {s.withheld}." if s.withheld else "",
+        )
 
     def _refresh_telemetry(self, s: RuntimeSnapshot) -> None:
         t = s.telemetry
@@ -587,7 +685,8 @@ class GuiApp:
         )
         dpg.set_value(
             "tel_wind",
-            f"{t.wind_velocity_kt:4.1f} kt, crosswind {t.crosswind_kt:+5.1f} kt",
+            f"{t.wind_velocity_kt:4.1f} kt from {math.degrees(t.wind_direction_rad):3.0f} deg, "
+            f"crosswind {t.crosswind_kt:+5.1f} kt",
         )
         dpg.set_value(
             "tel_accel",

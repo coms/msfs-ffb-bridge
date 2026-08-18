@@ -68,6 +68,8 @@ class RuntimeSnapshot:
     axis: AxisCommand = field(default_factory=AxisCommand)
     effect_labels: tuple[str, ...] = ()
     software_labels: tuple[str, ...] = ()
+    withheld: str = ""
+    """Why the wheel is getting nothing, when it is getting nothing."""
     unavailable_vars: tuple[str, ...] = ()
     module_errors: dict[str, str] = field(default_factory=dict)
     recording_path: str = ""
@@ -98,7 +100,7 @@ class BridgeRuntime:
         self._axis_out: AxisOutput | None = None
         self._haptic: HapticOutput | None = None
         self._wheel_reader: WheelReader | None = None
-        self._bench: Callable[[float], ForceOutput] | None = None
+        self._bench: Callable[[float, WheelState], ForceOutput] | None = None
         self._recorder: TelemetryRecorder | None = None
         self._last_recorded_t = -1.0
 
@@ -131,6 +133,11 @@ class BridgeRuntime:
         """Run something on the loop thread, between ticks."""
         self._commands.put(command)
 
+    @property
+    def haptic(self) -> HapticOutput | None:
+        """The open device, for settings that have to reach it while it is open."""
+        return self._haptic
+
     def set_panic(self, panic: bool) -> None:
         """Cut all force immediately, or restore it."""
 
@@ -154,11 +161,15 @@ class BridgeRuntime:
 
         self.post(apply)
 
-    def set_bench(self, generator: Callable[[float], ForceOutput] | None) -> None:
+    def set_bench(self, generator: Callable[[float, WheelState], ForceOutput] | None) -> None:
         """Drive the wheel from a generator instead of the simulator.
 
         This is what makes the bench test possible: the same output path, fed by
         something other than a flight, so the hardware can be proved on its own.
+
+        The generator is given where the wheel is as well as the time, because
+        the effects worth feeling on a bench are not all functions of time: a
+        control stop is a function of where the rim has been turned to.
         """
 
         def apply() -> None:
@@ -247,7 +258,7 @@ class BridgeRuntime:
             telemetry = self._sim.latest or FlightTelemetry(connected=False)
             self._record(telemetry)
             result = self.engine.tick(telemetry, wheel, now)
-            force = self._output_force(result, now)
+            force = self._output_force(result, now, wheel)
             self._send_axes(result, now)
 
             elapsed = now - last_time
@@ -327,10 +338,10 @@ class BridgeRuntime:
 
     # --- Output -----------------------------------------------------------
 
-    def _output_force(self, result: EngineResult, now: float) -> ForceOutput:
+    def _output_force(self, result: EngineResult, now: float, wheel: WheelState) -> ForceOutput:
         force = result.force
         if self._bench is not None:
-            force = self._bench(now)
+            force = self._bench(now, wheel)
         if self._panic:
             force = ZERO_FORCE
         if self._haptic is not None and self._haptic.is_open:
@@ -384,6 +395,7 @@ class BridgeRuntime:
             axis=result.axis,
             effect_labels=mixer.diagnostics.hardware_periodics if mixer else (),
             software_labels=mixer.diagnostics.software_periodics if mixer else (),
+            withheld=mixer.diagnostics.withheld if mixer else "",
             unavailable_vars=tuple(self._sim.status.unavailable_vars),
             module_errors=dict(self.engine.status.module_errors),
             recording_path=str(self._recorder.path) if self._recorder else "",

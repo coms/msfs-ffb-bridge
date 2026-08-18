@@ -92,7 +92,8 @@ def command_bench(args: argparse.Namespace) -> int:
     print(f"\n{test.name}\n{test.description}\n")
 
     started = time.perf_counter()
-    runtime.set_bench(lambda now: test.build(now - started))
+    config = runtime.engine.config
+    runtime.set_bench(lambda now, wheel: test.build(now - started, wheel, config))
     try:
         deadline = started + (args.seconds or test.duration)
         while time.perf_counter() < deadline:

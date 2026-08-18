@@ -157,6 +157,10 @@ class RoutingConfig:
 ROTATION_MIN_DEG = 90.0
 ROTATION_MAX_DEG = 2160.0
 
+#: Ceiling on aileron_curve. 1 already matches the sharpest expo offers the
+#: other way; this leaves room to go well past that for someone who wants it.
+AILERON_CURVE_MAX = 5.0
+
 
 @dataclass(slots=True)
 class WheelConfig:
@@ -171,6 +175,10 @@ class WheelConfig:
     air_range: float = 0.35
     """Fraction of full wheel travel that gives full aileron. 0.35 of a 540-degree
     wheel is about +/-95 degrees, which is a comfortable roll input."""
+    aileron_curve: float = 0.0
+    """Sharpens the centre of the aileron axis; 0 is linear, the opposite of
+    ``expo``. Aileron only -- rudder and steering keep the shared ``expo`` curve.
+    Capped at ``AILERON_CURVE_MAX``."""
     ground_range: float = 0.7
     """More travel for steering, where fine control at low speed matters."""
     rotation_deg: float = 540.0
@@ -206,6 +214,7 @@ class WheelConfig:
             "expo": self.expo,
             "invert": self.invert,
             "air_range": self.air_range,
+            "aileron_curve": self.aileron_curve,
             "ground_range": self.ground_range,
             "rotation_deg": self.rotation_deg,
             "soft_lock_deg": self.soft_lock_deg,
@@ -220,6 +229,9 @@ class WheelConfig:
             expo=clamp(float(data.get("expo", base.expo)), 0.0, 1.0),
             invert=bool(data.get("invert", base.invert)),
             air_range=clamp(float(data.get("air_range", base.air_range)), 0.05, 1.0),
+            aileron_curve=clamp(
+                float(data.get("aileron_curve", base.aileron_curve)), 0.0, AILERON_CURVE_MAX
+            ),
             ground_range=clamp(float(data.get("ground_range", base.ground_range)), 0.05, 1.0),
             rotation_deg=clamp(
                 float(data.get("rotation_deg", base.rotation_deg)),

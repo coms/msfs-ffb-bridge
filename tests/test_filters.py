@@ -20,6 +20,7 @@ from ffbbridge.core.filters import (
     clamp,
     deadband,
     expo,
+    inverse_gamma,
     lerp,
     map_range,
     smoothstep,
@@ -70,6 +71,24 @@ def test_expo_preserves_endpoints():
     assert expo(-1.0, 0.5) == pytest.approx(-1.0)
     # Mid travel is softened.
     assert expo(0.5, 1.0) < 0.5
+
+
+def test_inverse_gamma_preserves_endpoints():
+    assert inverse_gamma(0.0, 0.5) == 0.0
+    assert inverse_gamma(1.0, 0.5) == pytest.approx(1.0)
+    assert inverse_gamma(-1.0, 0.5) == pytest.approx(-1.0)
+    # Mid travel is sharpened -- the opposite of expo.
+    assert inverse_gamma(0.5, 1.0) > 0.5
+
+
+def test_inverse_gamma_is_linear_at_zero_amount():
+    assert inverse_gamma(0.3, 0.0) == 0.3
+    assert inverse_gamma(-0.7, 0.0) == -0.7
+
+
+def test_inverse_gamma_is_the_opposite_curve_from_expo():
+    value = 0.4
+    assert inverse_gamma(value, 0.6) > value > expo(value, 0.6)
 
 
 def test_lowpass_converges_and_primes_on_first_sample():

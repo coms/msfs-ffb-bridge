@@ -19,6 +19,29 @@ nothing needs restarting: move a slider while flying and feel what it does.
 
 Leave the rest alone until something specific bothers you.
 
+## Response curves
+
+`expo` and `aileron_curve` shape the wheel's raw position before it becomes an
+axis, and go the opposite way from each other.
+
+- `expo` (0..1, shared by aileron and rudder/steering) softens the centre: a
+  cubic blend that makes small inputs near neutral move less than they would
+  linearly, without changing where full deflection arrives. Useful when the
+  centre feels twitchy. Not on the Tuning tab -- set it in the profile JSON,
+  under `wheel`, the same way as `air_range` and `ground_range`.
+- `aileron_curve` (0..5, aileron only) does the reverse: it sharpens the
+  centre, so small aileron inputs move further than linear while full
+  deflection stays where it was. Rudder and steering are unaffected -- they
+  keep whatever `expo` is set to. Useful when small roll corrections feel like
+  they need more wheel than they should, without wanting to change how much
+  wheel gives full aileron. On the Tuning tab under *Wheel*; 1 is already about
+  as sharp as `expo` goes the other way, so most of the range past that is for
+  someone who wants a very small dead-feeling centre to disappear entirely.
+
+Both apply on top of `deadzone` and `center`. If both are non-zero at once on
+the aileron axis, `expo` softens first and `aileron_curve` then sharpens what
+is left -- in practice, set one or the other rather than both.
+
 ## What the sliders mean
 
 **Strength** on an effect scales that effect alone. Anything above 1.0 is
@@ -80,7 +103,10 @@ Two things follow from turning it on:
   full aileron still arrive **at** the stop rather than through it. A 180° lock
   therefore makes the ground axis noticeably more sensitive than the 0.7 of a
   540° wheel it would otherwise use — that is the trade, and it is why a narrow
-  lock wants a little more `expo`.
+  lock wants a little more `expo`. This cap follows the `soft_lock` effect's own
+  enabled switch, so turning that effect off in the module list gives the full
+  configured range back rather than leaving the axis capped at where a wall no
+  longer stands.
 - The stop ignores the **master strength**, alone among the steady forces. Turn
   the force model down to something comfortable and a stop scaled with it stops
   being a stop — at 30% it is a nudge you push straight through, and your
@@ -90,10 +116,24 @@ Two things follow from turning it on:
   master down will not do it. Nothing here can hold the rim against a determined
   arm, and it should not try to.
 
+- The wall pushes at full weight only while you are still leaning further into
+  it. It remembers the deepest lean each visit to the stop reaches, and once
+  the rim has backed off that peak by a real margin, the wall lets go almost
+  entirely -- down to a twentieth of itself -- and leaves the damping to bring
+  it home, rather than shoving all the way back through neutral when you
+  relax. The small give-and-take of a firm hold does not count as leaving, so
+  a wheel held against the stop still gets the whole wall and cannot creep
+  outward.
+
 The `soft_lock` effect has the usual three knobs: *Force at the stop*, *Travel
 the stop builds over* (8 degrees by default — the wall ramps in rather than
-arriving as a step), and *Resistance past the stop*, which is what stops you
-bouncing off it. Turn the effect off to keep the axis scaling but lose the wall.
+arriving as a step), and *Resistance past the stop*, which stiffens with lean
+the same way the wall itself does and is what actually stops a hard hit from
+bouncing. It is worth turning up if you are still feeling a kick on a fast flick
+into the stop: it runs on the device's own velocity sensor rather than
+however often the bridge can send an update, so it is the more effective of
+the two channels for arresting a fast impact rather than reacting to one after
+the fact. Turn the effect off to keep the axis scaling but lose the wall.
 
 ## Per-aircraft profiles
 

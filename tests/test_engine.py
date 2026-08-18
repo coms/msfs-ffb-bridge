@@ -210,6 +210,13 @@ def test_a_stalled_loop_cannot_produce_one_enormous_step():
 
 
 def test_changing_aircraft_switches_profile_and_resets():
+    """The first aircraft resolves immediately; a later switch has to persist.
+
+    Only the very first aircraft of a session is trusted on one tick -- there
+    is nothing established yet to protect. A change away from an aircraft
+    already believed has to keep reporting the same new identity for the full
+    dwell before it is acted on.
+    """
     profiles = ProfileSet(
         default=BridgeConfig(name="Default GA"),
         profiles=[BridgeConfig(name="Airliner", match=["*a320*"])],
@@ -220,9 +227,83 @@ def test_changing_aircraft_switches_profile_and_resets():
     engine.tick(FlightTelemetry(connected=True, title="Cessna C172"), wheel, 0.0)
     assert engine.config.name == "Default GA"
 
-    result = engine.tick(FlightTelemetry(connected=True, title="Airbus A320neo"), wheel, 0.1)
+    now = 0.1
+    result = engine.tick(FlightTelemetry(connected=True, title="Airbus A320neo"), wheel, now)
+    assert result.profile_name == "Default GA", "one tick alone must not be enough"
+
+    while now < 0.1 + BridgeEngine.AIRCRAFT_SWITCH_DWELL_S + 0.05:
+        now += 0.02
+        result = engine.tick(FlightTelemetry(connected=True, title="Airbus A320neo"), wheel, now)
     assert result.profile_name == "Airliner"
     assert engine.status.aircraft == "Airbus A320neo"
+
+
+def test_a_one_tick_title_glitch_does_not_discard_session_settings():
+    """A single stale read of the sim's own title must not reset anything.
+
+    The title and ATC model refresh on their own once-a-second cadence in the
+    real bridge; a momentary blip there used to silently rebuild every module
+    back to its profile default, discarding a checkbox someone had just
+    switched off mid-flight.
+    """
+    engine = BridgeEngine()
+    wheel = WheelState(connected=True)
+    now = 0.0
+
+    for _ in range(60):
+        now += 1 / 60
+        engine.tick(FlightTelemetry(connected=True, title="Cessna C172"), wheel, now)
+
+    settings = engine.config.module("crosswind")
+    settings.enabled = False
+
+    for i in range(120):
+        now += 1 / 60
+        # A one-tick blip: differs for a single tick, then reverts, the way a
+        # single malformed read of a once-a-second refresh would.
+        title = "Cessna C172X" if i == 30 else "Cessna C172"
+        engine.tick(FlightTelemetry(connected=True, title=title), wheel, now)
+
+    live = engine.config.module("crosswind")
+    assert live is settings
+    assert live.enabled is False
+
+
+def test_atc_model_never_triggers_an_aircraft_switch_on_its_own():
+    """ATC MODEL turned out unreliable on some aircraft; title alone decides.
+
+    Seen for real: a field that registers and refreshes every second, but the
+    simulator answers it with whatever was already in memory rather than a
+    real value, changing every single read even though the aircraft never
+    changed. That must not be part of what decides a switch happened at all,
+    dwell timer or not -- garbage that happens to persist past the dwell
+    would still cause one.
+    """
+    engine = BridgeEngine()
+    wheel = WheelState(connected=True)
+    now = 0.0
+
+    for _ in range(60):
+        now += 1 / 60
+        engine.tick(
+            FlightTelemetry(connected=True, title="Cessna C172", atc_model="C172"), wheel, now
+        )
+
+    settings = engine.config.module("crosswind")
+    settings.enabled = False
+
+    for i in range(240):  # 4 seconds: well past the switch dwell
+        now += 1 / 60
+        # A different, garbage-looking model string on every single tick.
+        engine.tick(
+            FlightTelemetry(connected=True, title="Cessna C172", atc_model=f"junk{i}"),
+            wheel,
+            now,
+        )
+
+    live = engine.config.module("crosswind")
+    assert live is settings
+    assert live.enabled is False
 
 
 def test_profile_gains_reach_the_modules():

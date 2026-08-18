@@ -28,9 +28,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .config import RoutingConfig, WheelConfig
+from .config import ModuleSettings, RoutingConfig, WheelConfig
 from .context import AxisMode, TickContext
-from .filters import DwellTimer, SlewLimiter, clamp, deadband, expo
+from .filters import DwellTimer, SlewLimiter, clamp, deadband, expo, inverse_gamma
 from .telemetry import FlightTelemetry, WheelState
 
 
@@ -72,9 +72,17 @@ class AxisRouter:
     #: third of a second: fast enough to fly, slow enough that nothing snaps.
     MAX_AXIS_RATE = 3.0
 
-    def __init__(self, routing: RoutingConfig, wheel_config: WheelConfig) -> None:
+    def __init__(
+        self,
+        routing: RoutingConfig,
+        wheel_config: WheelConfig,
+        soft_lock_settings: ModuleSettings | None = None,
+    ) -> None:
         self.routing = routing
         self.wheel_config = wheel_config
+        #: Read live rather than captured once, so switching the soft_lock
+        #: effect off in the GUI is felt here immediately, the same tick.
+        self._soft_lock_settings = soft_lock_settings
         pinned = self._fixed_target()
         start = 1.0 if pinned is None else pinned
         self._ground_weight = start
@@ -100,6 +108,10 @@ class AxisRouter:
     def set_override(self, override: str) -> None:
         if override in OverrideState.ORDER:
             self._override = override
+
+    def set_soft_lock_settings(self, settings: ModuleSettings | None) -> None:
+        """Repoint at a fresh settings object, mirroring how modules are kept in sync."""
+        self._soft_lock_settings = settings
 
     def reset(self, *, on_ground: bool = True) -> None:
         """Start again, assuming the aircraft is wherever it says it is.
@@ -165,6 +177,7 @@ class AxisRouter:
         air_range = self._axis_range(self.wheel_config.air_range)
         rudder = self._outgoing_or_incoming(raw, ground_range, weight=gw, incoming=target > 0.5)
         aileron = self._outgoing_or_incoming(raw, air_range, weight=1.0 - gw, incoming=target < 0.5)
+        aileron = inverse_gamma(aileron, self.wheel_config.aileron_curve)
 
         aileron = self._aileron_slew.update(clamp(aileron), dt)
         rudder = self._rudder_slew.update(clamp(rudder), dt)
@@ -248,7 +261,14 @@ class AxisRouter:
         A soft lock narrower than the configured range would otherwise cost
         authority: the stop would arrive before full rudder did, and you would be
         pushing against the wall to get the last of your steering.
+
+        Only while there is actually a wall there to align with, though: this
+        tracks the soft_lock effect's own enabled switch, so turning that off
+        gives the full configured range back rather than leaving the axis
+        capped at where a wall no longer stands.
         """
+        if self._soft_lock_settings is not None and not self._soft_lock_settings.enabled:
+            return axis_range
         limit = self.wheel_config.soft_lock_fraction
         return min(axis_range, limit) if limit > 0.0 else axis_range
 

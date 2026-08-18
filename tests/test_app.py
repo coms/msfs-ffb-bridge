@@ -17,18 +17,29 @@ from ffbbridge.app.doctor import Level, format_report, run_checks
 from ffbbridge.app.loop import BridgeRuntime, RuntimeSnapshot
 from ffbbridge.app.main import build_parser, load_profiles, main
 from ffbbridge.core.config import BridgeConfig, ProfileSet
+from ffbbridge.core.telemetry import WheelState
 
 pytest.importorskip("sdl2")
 
 
 # --- Bench tests ---------------------------------------------------------
 
+BENCH_CONFIG = BridgeConfig()
+BENCH_CONFIG.wheel.rotation_deg = 1080.0
+BENCH_CONFIG.wheel.soft_lock_deg = 180.0
+
+
+def play(test_id: str, t: float, position: float = 0.0):
+    """One frame of a bench test, at a moment and a wheel position."""
+    return find_test(test_id).build(t, WheelState(position=position), BENCH_CONFIG)
+
 
 def test_every_bench_test_produces_bounded_forces():
     """These drive the wheel directly, with no mixer in between to clamp them."""
     for test in BENCH_TESTS:
         for step in range(200):
-            force = test.build(step * 0.05)
+            wheel = WheelState(position=(step % 41) / 20.0 - 1.0)
+            force = test.build(step * 0.05, wheel, BENCH_CONFIG)
             assert -1.0 <= force.constant <= 1.0, test.id
             for periodic in force.periodics:
                 assert 0.0 <= periodic.magnitude <= 1.0, test.id
@@ -39,36 +50,97 @@ def test_every_bench_test_produces_bounded_forces():
 
 
 def test_bench_directions_are_opposite():
-    left = find_test("left").build(0.0)
-    right = find_test("right").build(0.0)
+    left = play("left", 0.0)
+    right = play("right", 0.0)
     assert left.constant < 0 < right.constant
 
 
 def test_bench_sweep_crosses_zero():
     """Direction and smoothness are what this test is for, so it has to reverse."""
-    values = [find_test("sweep").build(t * 0.1).constant for t in range(200)]
+    values = [play("sweep", t * 0.1).constant for t in range(200)]
     assert min(values) < -0.2
     assert max(values) > 0.2
 
 
 def test_bench_rumble_sweeps_upward_then_restarts():
-    frequencies = [find_test("rumble").build(t * 0.5).periodics[0].frequency_hz for t in range(16)]
+    frequencies = [play("rumble", t * 0.5).periodics[0].frequency_hz for t in range(16)]
     assert frequencies[0] < frequencies[7]
 
 
 def test_bench_touchdown_is_a_repeating_transient_not_a_drone():
     magnitudes = [
-        (find_test("touchdown").build(t * 0.05).periodics or [None])[0] for t in range(80)
+        (play("touchdown", t * 0.05).periodics or [None])[0] for t in range(80)
     ]
     quiet = sum(1 for m in magnitudes if m is None)
     assert quiet > len(magnitudes) // 2
 
 
 def test_bench_everything_exercises_all_channels():
-    force = find_test("everything").build(1.0)
+    force = play("everything", 1.0)
     assert force.spring is not None
     assert force.damper is not None
     assert len(force.periodics) == 3
+
+
+def test_bench_soft_lock_is_the_real_stop_at_the_profile_s_travel():
+    """It runs the module, so the bench cannot drift from what you will fly.
+
+    180 degrees of lock on a 1080 degree wheel is 90 either side, which is a
+    sixth of the travel: silent inside it, pushing back outside it, and pushing
+    back the other way on the other side.
+    """
+    assert play("softlock", 0.0, position=0.10).constant == 0.0
+    assert play("softlock", 0.0, position=0.16).constant == 0.0
+
+    right = play("softlock", 0.0, position=0.30)
+    left = play("softlock", 0.0, position=-0.30)
+    assert right.constant < 0 < left.constant
+    assert right.damper is not None
+
+
+def test_bench_soft_lock_carries_its_ratchet_state_across_a_run():
+    """A module rebuilt every tick can never remember a peak to release from.
+
+    The bench must keep one module alive across a run's rising ``t``, or the
+    release the module implements is invisible on the bench even though it
+    works correctly when driven by a persistent instance.
+    """
+    test = find_test("softlock")
+    dt = 1 / 100
+    t = 0.0
+    for _ in range(30):
+        held = test.build(t, WheelState(position=0.30), BENCH_CONFIG)
+        t += dt
+    # Back off well past the release hysteresis, still within one run.
+    eased = test.build(t, WheelState(position=0.25), BENCH_CONFIG)
+    assert 0.0 < -eased.constant < -held.constant
+
+
+def test_bench_soft_lock_starts_fresh_when_a_new_run_begins():
+    """The clock going backwards is what a fresh 'Play' click looks like."""
+    test = find_test("softlock")
+    t = 0.0
+    for _ in range(30):
+        test.build(t, WheelState(position=0.30), BENCH_CONFIG)
+        t += 1 / 100
+    test.build(t, WheelState(position=0.25), BENCH_CONFIG)  # released
+
+    restarted = test.build(0.0, WheelState(position=0.25), BENCH_CONFIG)
+    fresh = play("softlock", 0.0, position=0.25)
+    assert restarted.constant == pytest.approx(fresh.constant)
+
+
+def test_bench_soft_lock_follows_the_profile_rather_than_a_fixed_number():
+    narrow = BridgeConfig()
+    narrow.wheel.rotation_deg = 1080.0
+    narrow.wheel.soft_lock_deg = 90.0
+    wide = BridgeConfig()
+    wide.wheel.rotation_deg = 1080.0
+    wide.wheel.soft_lock_deg = 540.0
+
+    at = WheelState(position=0.2)
+    assert find_test("softlock").build(0.0, at, narrow).constant < 0.0
+    assert find_test("softlock").build(0.0, at, wide).constant == 0.0
 
 
 def test_bench_ids_are_unique():

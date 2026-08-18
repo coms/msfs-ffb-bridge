@@ -43,6 +43,12 @@ class MixDiagnostics:
     clipped: bool = False
     envelope: float = 1.0
     """Safety envelope applied this tick; below 1 while fading out."""
+    withheld: str = ""
+    """Why force is being withheld, in words, or empty when it is not.
+
+    Without this the window is a wall of moving bars above a wheel that does
+    nothing, and every one of the reasons is invisible from the outside.
+    """
     module_errors: dict[str, str] = field(default_factory=dict)
 
 
@@ -95,7 +101,7 @@ class EffectMixer:
     ) -> ForceOutput:
         diagnostics = MixDiagnostics()
 
-        target_envelope = self._target_envelope(tel, ctx)
+        target_envelope, diagnostics.withheld = self._target_envelope(tel, ctx)
         self._envelope = self._approach_envelope(target_envelope, dt)
         diagnostics.envelope = self._envelope
 
@@ -197,15 +203,24 @@ class EffectMixer:
 
     # --- Safety envelope --------------------------------------------------
 
-    def _target_envelope(self, tel: FlightTelemetry, ctx: TickContext) -> float:
-        """1.0 when forces are welcome, 0.0 when they must not be produced."""
-        if ctx.telemetry_stale or not tel.connected:
-            return 0.0
-        if self.safety.zero_when_paused and (tel.paused or tel.slew_active):
-            return 0.0
+    def _target_envelope(self, tel: FlightTelemetry, ctx: TickContext) -> tuple[float, str]:
+        """1.0 when forces are welcome, 0.0 when they must not be produced.
+
+        Returns why as well as whether. Every one of these silences the wheel
+        completely while the module bars in the window carry on moving, because
+        those are what the modules asked for rather than what was allowed out.
+        """
+        if not tel.connected:
+            return 0.0, "the simulator is not connected"
+        if ctx.telemetry_stale:
+            return 0.0, "the telemetry has stopped arriving"
+        if self.safety.zero_when_paused and tel.paused:
+            return 0.0, "the simulator is paused"
+        if self.safety.zero_when_paused and tel.slew_active:
+            return 0.0, "slew mode is active"
         if self.safety.zero_when_not_in_cockpit and not tel.in_cockpit:
-            return 0.0
-        return 1.0
+            return 0.0, "the view is not in the cockpit"
+        return 1.0, ""
 
     def _approach_envelope(self, target: float, dt: float) -> float:
         """Fade toward the target over ``decay_ms`` rather than stepping.

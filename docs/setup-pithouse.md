@@ -18,6 +18,27 @@ spring underneath, you feel the base's opinion rather than the aircraft's.
 MOZA has acknowledged that the base does not fully honour an application's
 request to disable its spring. So it has to be turned off by hand.
 
+## Two different settings that are both called "spring"
+
+This is the one to get right, and the names do not help:
+
+- The base's **own spring** is the base adding centring of its own, the same
+  amount whatever is happening. This is the one to turn **off**.
+- The **game spring** is how much of an application's *requested* spring the
+  base passes through, from 0 to 100%. This is the bridge's centring force —
+  control loading, the weight of the ailerons that grows with airspeed — and at
+  0 it is thrown away before it reaches the motor. This one has to be **on**.
+
+Turn the first off and the second off and the wheel goes dead in the air: the
+bridge asks for exactly the right centring force and the base discards it. The
+same switch exists for damping, friction and inertia; the bridge uses the
+damper, so leave that one on too.
+
+The bridge's own effects are still worth understanding when you set these. Only
+control loading, steering feel and the soft lock's damping ride on the spring
+and damper channels. Everything else — runway rumble, touchdown, the soft lock
+itself — is a constant force or a vibration, and arrives regardless.
+
 ## Settings
 
 In MOZA Pit House, on the wheelbase page:
@@ -25,7 +46,9 @@ In MOZA Pit House, on the wheelbase page:
 | Setting | Value | Why |
 | --- | --- | --- |
 | Force feedback mode | **DirectInput** | Anything else can hide effects from applications entirely |
-| Spring | **0** | The bridge provides centring itself, scaled by airspeed |
+| Spring (the base's own) | **0** | The bridge provides centring itself, scaled by airspeed |
+| Game spring | **100%** | How much of the *bridge's* centring gets through. At 0 there is none |
+| Game damper | **100%** | Carries the soft lock's damping and the aerodynamic damping |
 | Friction | **0** | Masks the small, fast effects like runway texture |
 | Inertia | **0** | Makes the rim feel heavy and swallows sharp transients such as touchdown |
 | Damping | **5–10** | A little is good: it takes the edge off without dulling anything |

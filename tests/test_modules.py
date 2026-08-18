@@ -487,6 +487,38 @@ def test_a_gust_is_felt():
     assert abs(module.update(gust, WheelState(), AIR, DT).constant) > 0.05
 
 
+def test_chop_follows_the_crosswind_component_not_raw_wind_speed():
+    """A headwind does not buffet a wing the way the same speed across it does."""
+    from math import radians
+
+    # Heading 0 (north). Wind from the east is pure crosswind; wind from the
+    # north, straight down the nose, is pure headwind at the same speed.
+    crosswind = run_module(
+        Turbulence(),
+        flying(
+            wind_velocity_kt=25.0,
+            wind_direction_rad=radians(90.0),
+            heading_true_rad=0.0,
+            ias_kt=100.0,
+        ),
+        ctx=AIR,
+        ticks=600,
+    )
+    headwind = run_module(
+        Turbulence(),
+        flying(
+            wind_velocity_kt=25.0,
+            wind_direction_rad=0.0,
+            heading_true_rad=0.0,
+            ias_kt=100.0,
+        ),
+        ctx=AIR,
+        ticks=600,
+    )
+    assert abs(headwind.constant) < 0.02
+    assert abs(crosswind.constant) > abs(headwind.constant)
+
+
 # --- Slipstream and crosswind -------------------------------------------
 
 
@@ -652,6 +684,52 @@ def test_soft_lock_keeps_stiffening_the_further_it_is_pushed():
     # leaning on a wall the old version held at a constant 0.9.
     assert force(0.37) < force(0.39) < force(0.41)
     assert force(0.45) == pytest.approx(1.0, abs=0.01)
+
+
+def _lean_then_ease(lock, peak_position, back_off, *, ctx=SOFT_LOCK_180, side=1.0):
+    """Drive one module instance to a peak lean, then back it off.
+
+    Position only; velocity plays no part in the release any more, because
+    the instantaneous speed at the rim jitters through the collision itself
+    and following it made the wall flicker open and shut while still being
+    pressed. The wall instead remembers the deepest lean this visit reached.
+    """
+    tel = taxiing()
+    lock.update(tel, WheelState(position=side * peak_position), ctx, DT)
+    return lock.update(tel, WheelState(position=side * (peak_position - back_off)), ctx, DT)
+
+
+def test_soft_lock_eases_off_once_backed_off_the_peak():
+    """A stop stops the wheel. It does not fire it back through neutral."""
+    held = -run_module(SoftLock(), taxiing(), ctx=SOFT_LOCK_180, wheel=WheelState(position=0.45)).constant
+    # Well past the release hysteresis (0.3 ramps of a ~0.03 ramp).
+    eased = -_lean_then_ease(SoftLock(), 0.45, 0.05).constant
+    assert 0.0 < eased < held
+
+
+def test_soft_lock_does_not_release_on_the_ordinary_give_of_a_firm_hold():
+    """A tiny wobble at the peak is not the same as leaving the stop."""
+    held = -run_module(SoftLock(), taxiing(), ctx=SOFT_LOCK_180, wheel=WheelState(position=0.45)).constant
+    wobbled = -_lean_then_ease(SoftLock(), 0.45, 0.001).constant
+    assert wobbled == pytest.approx(held)
+
+
+def test_soft_lock_release_is_symmetric_on_the_left():
+    right = -_lean_then_ease(SoftLock(), 0.45, 0.05, side=1.0).constant
+    left = -_lean_then_ease(SoftLock(), 0.45, 0.05, side=-1.0).constant
+    assert left == pytest.approx(-right)
+
+
+def test_soft_lock_re_engages_on_a_fresh_visit_to_the_stop():
+    """Backing fully off the stop and leaning in again is a new excursion."""
+    lock = SoftLock()
+    tel = taxiing()
+    lock.update(tel, WheelState(position=0.45), SOFT_LOCK_180, DT)
+    lock.update(tel, WheelState(position=0.40), SOFT_LOCK_180, DT)  # released
+    lock.update(tel, WheelState(position=0.30), SOFT_LOCK_180, DT)  # back inside the limit
+    fresh = lock.update(tel, WheelState(position=0.40), SOFT_LOCK_180, DT)
+    held = -run_module(SoftLock(), tel, ctx=SOFT_LOCK_180, wheel=WheelState(position=0.40)).constant
+    assert -fresh.constant == pytest.approx(held)
 
 
 def test_soft_lock_damps_only_once_past_the_stop():

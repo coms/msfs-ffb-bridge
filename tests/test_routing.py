@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from ffbbridge.core.config import RoutingConfig, WheelConfig
+from ffbbridge.core.config import ModuleSettings, RoutingConfig, WheelConfig
 from ffbbridge.core.context import AxisMode
 from ffbbridge.core.routing import AxisRouter, OverrideState
 from ffbbridge.core.telemetry import FlightTelemetry, WheelState
@@ -63,6 +63,60 @@ def test_inactive_axis_is_held_at_zero_not_abandoned():
     assert command.mode is AxisMode.AIR
     assert command.rudder == 0.0
     assert command.aileron > 0
+
+
+def test_aileron_curve_sharpens_small_inputs_only_on_aileron():
+    routing = RoutingConfig()
+    flat = AxisRouter(routing, WheelConfig(deadzone=0.0, expo=0.0, aileron_curve=0.0))
+    sharp = AxisRouter(routing, WheelConfig(deadzone=0.0, expo=0.0, aileron_curve=1.0))
+
+    wheel = WheelState(position=0.2)
+    flat_command = drive(flat, airborne(), 6.0, wheel=wheel)
+    sharp_command = drive(sharp, airborne(), 6.0, wheel=wheel)
+    assert sharp_command.aileron > flat_command.aileron
+
+    # Rudder/steering is untouched by the aileron-only curve.
+    wheel = WheelState(position=0.2)
+    flat_command = drive(flat, rolling(), 6.0, wheel=wheel)
+    sharp_command = drive(sharp, rolling(), 6.0, wheel=wheel)
+    assert sharp_command.rudder == pytest.approx(flat_command.rudder)
+
+
+def test_aileron_curve_leaves_full_deflection_unchanged():
+    routing = RoutingConfig()
+    sharp = AxisRouter(routing, WheelConfig(deadzone=0.0, expo=0.0, aileron_curve=1.0))
+    command = drive(sharp, airborne(), 6.0, wheel=WheelState(position=1.0))
+    assert command.aileron == pytest.approx(1.0, abs=1e-3)
+
+
+def test_disabling_soft_lock_gives_back_the_full_axis_range():
+    """A wall that is switched off should not still be capping authority.
+
+    With a 0.2 soft lock fraction and 0.35 air_range, full aileron would
+    otherwise arrive at 0.2 instead of the configured 0.35 -- costing you
+    the last third of your roll authority for a stop that no longer exists.
+    """
+    wheel = WheelConfig(deadzone=0.0, expo=0.0, rotation_deg=1000.0, soft_lock_deg=200.0)
+    routing = RoutingConfig()
+
+    enabled = AxisRouter(routing, wheel, ModuleSettings(enabled=True))
+    disabled = AxisRouter(routing, wheel, ModuleSettings(enabled=False))
+
+    wheel_state = WheelState(position=0.3)
+    capped = drive(enabled, airborne(), 6.0, wheel=wheel_state)
+    full = drive(disabled, airborne(), 6.0, wheel=wheel_state)
+    assert capped.aileron == pytest.approx(1.0)
+    assert full.aileron < 1.0
+
+
+def test_soft_lock_settings_can_be_repointed_live():
+    """Mirrors how apply_config keeps every module's settings object in sync."""
+    wheel = WheelConfig(deadzone=0.0, expo=0.0, rotation_deg=1000.0, soft_lock_deg=200.0)
+    router = AxisRouter(RoutingConfig(), wheel, ModuleSettings(enabled=True))
+    router.set_soft_lock_settings(ModuleSettings(enabled=False))
+
+    command = drive(router, airborne(), 6.0, wheel=WheelState(position=0.3))
+    assert command.aileron < 1.0
 
 
 def test_handover_to_ailerons_after_liftoff():

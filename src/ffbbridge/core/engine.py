@@ -8,15 +8,19 @@ and the replay tool drive exactly this class.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 
 from .config import BridgeConfig, ModuleSettings, ProfileSet
 from .context import TickContext
+from .filters import DwellTimer
 from .forces import ForceOutput
 from .mixer import EffectMixer
-from .modules import MODULE_REGISTRY
+from .modules import MODULE_REGISTRY, SoftLock
 from .modules.base import EffectModule
 from .routing import AxisCommand, AxisRouter
+
+LOGGER = logging.getLogger(__name__)
 from .telemetry import FlightTelemetry, WheelState
 
 
@@ -53,6 +57,14 @@ class BridgeEngine:
     #: debugger breakpoint must not produce a single enormous tick.
     MAX_DT = 0.1
 
+    #: How long a new aircraft identity has to persist before it is believed.
+    #: The title and ATC model come from the simulator on their own once-a-
+    #: second refresh, and a single stale or malformed read there must not be
+    #: enough to trigger a rebuild -- that discards every unsaved change this
+    #: session made, from a slider nudge to an effect switched off, silently
+    #: putting it back the moment the next refresh looks normal again.
+    AIRCRAFT_SWITCH_DWELL_S = 1.5
+
     def __init__(
         self,
         profiles: ProfileSet | None = None,
@@ -62,6 +74,8 @@ class BridgeEngine:
         self.profiles = profiles if profiles is not None else ProfileSet()
         self._periodic_slots = periodic_slots
         self._aircraft_key = ""
+        self._pending_aircraft_key: str | None = None
+        self._aircraft_switch_dwell = DwellTimer(self.AIRCRAFT_SWITCH_DWELL_S)
         self.status = EngineStatus()
 
         self.config = self._resolve_config("", "")
@@ -92,7 +106,7 @@ class BridgeEngine:
         self.modules = [cls(config.module(cls.id)) for cls in MODULE_REGISTRY]
         slots = config.device.periodic_slots or self._periodic_slots
         self.mixer = EffectMixer(self.modules, config.safety, periodic_slots=slots)
-        self.router = AxisRouter(config.routing, config.wheel)
+        self.router = AxisRouter(config.routing, config.wheel, config.module(SoftLock.id))
         self.status.profile_name = config.name
 
     def set_periodic_slots(self, slots: int) -> None:
@@ -122,6 +136,8 @@ class BridgeEngine:
         self.config = config
         for module in self.modules:
             module.settings = config.module(module.id)
+        if self.router is not None:
+            self.router.set_soft_lock_settings(config.module(SoftLock.id))
         if self.mixer is not None:
             self.mixer.set_safety(config.safety)
             if config.device.periodic_slots:
@@ -143,7 +159,7 @@ class BridgeEngine:
         assert self.mixer is not None and self.router is not None
 
         dt = self._elapsed(now)
-        self._switch_aircraft_if_needed(tel)
+        self._switch_aircraft_if_needed(tel, dt)
         stale = self._is_stale(tel, now)
 
         axis = self.router.update(tel, wheel, dt)
@@ -201,10 +217,40 @@ class BridgeEngine:
         age_ms = (now - self._last_sample_wall) * 1000.0
         return age_ms > self.config.safety.watchdog_ms
 
-    def _switch_aircraft_if_needed(self, tel: FlightTelemetry) -> None:
-        key = f"{tel.title}|{tel.atc_model}"
+    def _switch_aircraft_if_needed(self, tel: FlightTelemetry, dt: float) -> None:
+        # Title alone, not paired with ATC MODEL. The model string has turned
+        # out to be unreliable on some aircraft -- registered and refreshed
+        # every second, but answered with whatever was already in memory
+        # rather than a real value -- and title on its own is what every
+        # profile match and every log line in this investigation showed to
+        # actually be stable.
+        key = tel.title
         if key == self._aircraft_key:
+            self._pending_aircraft_key = None
+            self._aircraft_switch_dwell.reset()
             return
+        if key != self._pending_aircraft_key:
+            self._pending_aircraft_key = key
+            self._aircraft_switch_dwell.reset()
+        confirmed = self._aircraft_switch_dwell.update(True, dt)
+        # The very first aircraft this session resolves immediately -- there is
+        # no established aircraft's settings to protect yet, and delaying it
+        # would fly the first second and a half on the wrong wheel rotation.
+        # Only a change away from an aircraft already believed waits out the
+        # dwell: a genuine change keeps reporting the same new identity every
+        # tick and confirms within it, while a one-off glitch in the sim's own
+        # once-a-second title refresh reverts next tick and never rebuilds.
+        if not confirmed and self._aircraft_key != "":
+            return
+
+        LOGGER.info(
+            "aircraft switch confirmed: %r -> %r (every module rebuilds to its "
+            "profile default; any unsaved toggle or slider from the old aircraft "
+            "is lost)",
+            self._aircraft_key,
+            key,
+        )
+        self._pending_aircraft_key = None
         self._aircraft_key = key
         self.status.aircraft = tel.title or tel.atc_model
         self.status.aircraft_title = tel.title

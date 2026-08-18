@@ -121,6 +121,19 @@ def test_soft_lock_survives_the_round_trip_and_reads_as_a_fraction():
     assert WheelConfig.from_dict(wheel.to_dict()) == wheel
     assert WheelConfig().soft_lock_fraction == 0.0
 
+
+def test_aileron_curve_survives_the_round_trip_and_is_clamped():
+    from ffbbridge.core.config import AILERON_CURVE_MAX, WheelConfig
+
+    wheel = WheelConfig(aileron_curve=0.6)
+    assert WheelConfig.from_dict(wheel.to_dict()) == wheel
+    assert WheelConfig().aileron_curve == 0.0
+    assert WheelConfig.from_dict({"aileron_curve": AILERON_CURVE_MAX}).aileron_curve == (
+        AILERON_CURVE_MAX
+    )
+    assert WheelConfig.from_dict({"aileron_curve": 50.0}).aileron_curve == AILERON_CURVE_MAX
+    assert WheelConfig.from_dict({"aileron_curve": -5.0}).aileron_curve == 0.0
+
 def test_saving_for_an_aircraft_beats_the_family_profile_covering_it():
     profiles = ProfileSet()
     profiles.profiles.append(BridgeConfig(name="Airliners", match=["*a320*"]))

@@ -16,6 +16,7 @@ __all__ = [
     "smoothstep",
     "deadband",
     "expo",
+    "inverse_gamma",
     "LowPass",
     "HighPass",
     "SlewLimiter",
@@ -87,6 +88,22 @@ def expo(value: float, amount: float) -> float:
     """
     a = clamp(amount, 0.0, 1.0)
     return (1.0 - a) * value + a * value * value * value
+
+
+def inverse_gamma(value: float, amount: float) -> float:
+    """Sharpen the centre of travel instead of softening it.
+
+    The opposite of :func:`expo`: a concave curve rather than a convex one, so
+    small inputs near centre move further than they would linearly while the
+    endpoints stay put. ``amount`` 0 is linear; there is no fixed ceiling here,
+    the caller decides how sharp "sharpest" gets. Expects ``value`` already in
+    -1..1.
+    """
+    a = max(0.0, amount)
+    if a <= 0.0 or value == 0.0:
+        return value
+    magnitude = abs(value) ** (1.0 / (1.0 + a))
+    return math.copysign(magnitude, value)
 
 
 class LowPass:

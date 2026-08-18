@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import fnmatch
 import logging
+import time
 from dataclasses import dataclass, field
 
 from sdl2 import (
@@ -43,6 +44,11 @@ LOGGER = logging.getLogger(__name__)
 INFINITE = sdl_haptic.SDL_HAPTIC_INFINITY
 
 #: Fixed slot names for the channels that are always present.
+#: How long to leave a refused effect alone before offering it again.
+#: Long enough not to hammer a device that means it, short enough that a
+#: passing refusal costs a few seconds of feel rather than a whole flight.
+RETRY_REFUSED_S = 5.0
+
 CONSTANT_SLOT = "__constant__"
 SPRING_SLOT = "__spring__"
 DAMPER_SLOT = "__damper__"
@@ -50,6 +56,22 @@ DAMPER_SLOT = "__damper__"
 
 class FfbError(RuntimeError):
     """Something went wrong talking to the device."""
+
+
+def _refusal_hint(label: str) -> str:
+    """Point at the setting that most often explains a refused condition effect.
+
+    A wheelbase can be told to discard the spring and damper an application
+    asks for, and then says only that it could not create the effect. The
+    message that follows is worth more than the one the driver gave us.
+    """
+    if label in (SPRING_SLOT, DAMPER_SLOT):
+        return (
+            ". Wheelbases can be set to discard the spring and damper an application asks "
+            "for - in MOZA Pit House this is the 'game spring' and 'game damper' setting, "
+            "and at zero the centring force never reaches the motor"
+        )
+    return ""
 
 
 def _sdl_error() -> str:
@@ -180,7 +202,16 @@ class HapticOutput:
         self.joystick = None
         self._haptic = None
         self._slots: dict[str, _Slot] = {}
-        self._failed_labels: set[str] = set()
+        self._failed_labels: dict[str, float] = {}
+        """Effects the device refused, and when, so they can be tried again.
+
+        A refusal is not always permanent. Another application taking the wheel,
+        or the device still settling after it was plugged in, refuses an effect
+        that would be accepted a moment later -- and giving up for the rest of
+        the session costs the centring spring and the damping for the whole
+        flight, silently.
+        """
+        self._retry_after = RETRY_REFUSED_S
         self.periodic_slots = 0
         self.instance_id = -1
 
@@ -340,19 +371,28 @@ class HapticOutput:
         if slot is not None:
             self._release(label)
 
-        if label in self._failed_labels:
-            return
+        refused_at = self._failed_labels.get(label)
+        if refused_at is not None:
+            if time.monotonic() - refused_at < self._retry_after:
+                return
+            del self._failed_labels[label]
 
         effect_id = sdl_haptic.SDL_HapticNewEffect(self._haptic, effect)
         if effect_id < 0:
-            LOGGER.warning("device refused effect %r: %s", label, _sdl_error())
-            self._failed_labels.add(label)
+            # Only the first refusal is worth a line; the retries repeat at the
+            # retry interval and would fill the log with the same sentence.
+            if label not in self._failed_labels:
+                LOGGER.warning(
+                    "device refused effect %r: %s%s", label, _sdl_error(), _refusal_hint(label)
+                )
+            self._failed_labels[label] = time.monotonic()
             self._shrink_budget()
             return
         if sdl_haptic.SDL_HapticRunEffect(self._haptic, effect_id, INFINITE) != 0:
-            LOGGER.warning("could not start effect %r: %s", label, _sdl_error())
+            if label not in self._failed_labels:
+                LOGGER.warning("could not start effect %r: %s", label, _sdl_error())
             sdl_haptic.SDL_HapticDestroyEffect(self._haptic, effect_id)
-            self._failed_labels.add(label)
+            self._failed_labels[label] = time.monotonic()
             return
         self._slots[label] = _Slot(effect_id=effect_id, effect_type=effect.type, effect=effect)
 
