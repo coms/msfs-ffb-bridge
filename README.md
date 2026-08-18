@@ -59,6 +59,7 @@ cannot flip the axis back and forth.
 | `prop_wash` | The left swing under power at low speed, plus slipstream burble |
 | `crosswind` | Weathervaning on the ground, sideslip-driven roll in the air |
 | `control_loading` | Centring force growing with the square of airspeed, offset by trim |
+| `soft_lock` | An end stop at the travel the profile allows, so the rim stops where the aeroplane's controls would |
 | `handoff` | Walks the wheel to centre while the axis changes hands |
 | `buffet` | Stall, Mach and flap buffet. Off by default |
 
