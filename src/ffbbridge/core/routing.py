@@ -75,8 +75,10 @@ class AxisRouter:
     def __init__(self, routing: RoutingConfig, wheel_config: WheelConfig) -> None:
         self.routing = routing
         self.wheel_config = wheel_config
-        self._ground_weight = 1.0
-        self._target_ground = 1.0
+        pinned = self._fixed_target()
+        start = 1.0 if pinned is None else pinned
+        self._ground_weight = start
+        self._target_ground = start
         self._handoff_reference = 0.0
         self._air_dwell = DwellTimer(routing.air_dwell_s)
         self._ground_dwell = DwellTimer(routing.ground_dwell_s)
@@ -103,9 +105,15 @@ class AxisRouter:
         """Start again, assuming the aircraft is wherever it says it is.
 
         Called on connect and on aircraft change so the bridge does not think a
-        flight starting on the runway has just landed.
+        flight starting on the runway has just landed. A pinned mode starts
+        already pinned, so a wheel that is not meant to steer never gets a
+        first second of rudder on the way down from a default of one.
         """
-        self._ground_weight = 1.0 if on_ground else 0.0
+        pinned = self._fixed_target()
+        if pinned is not None:
+            self._ground_weight = pinned
+        else:
+            self._ground_weight = 1.0 if on_ground else 0.0
         self._target_ground = self._ground_weight
         self._handoff_reference = 0.0
         self._air_dwell.reset()
@@ -172,12 +180,25 @@ class AxisRouter:
 
     # --- Internals --------------------------------------------------------
 
-    def _resolve_target(self, tel: FlightTelemetry, dt: float) -> float:
-        """Where the blend should be heading, in 0..1."""
+    def _fixed_target(self) -> float | None:
+        """The blend a pinned mode holds the axis at, or None when automatic.
+
+        ``aileron_only`` is the wheel with the rudder taken off it: steering
+        stays on the pedals, and the ground effects that are felt through the
+        airframe rather than through the steering carry on regardless, because
+        they key off weight on wheels rather than off this number.
+        """
         if self.routing.mode == "aileron_only":
             return 0.0
         if self.routing.mode == "rudder_only":
             return 1.0
+        return None
+
+    def _resolve_target(self, tel: FlightTelemetry, dt: float) -> float:
+        """Where the blend should be heading, in 0..1."""
+        pinned = self._fixed_target()
+        if pinned is not None:
+            return pinned
         if self._override == OverrideState.FORCE_GROUND:
             return 1.0
         if self._override == OverrideState.FORCE_AIR:

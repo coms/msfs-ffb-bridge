@@ -13,11 +13,17 @@ from ffbbridge.core.synthetic import SCRIPT_EVENTS, SyntheticFlight
 from ffbbridge.core.telemetry import FlightTelemetry, WheelState
 
 
-def fly(engine: BridgeEngine | None = None, flight: SyntheticFlight | None = None, **kwargs):
+def fly(
+    engine: BridgeEngine | None = None,
+    flight: SyntheticFlight | None = None,
+    *,
+    wheel: WheelState | None = None,
+    **kwargs,
+):
     """Fly the scripted sortie and return every (telemetry, result) pair."""
     engine = engine or BridgeEngine()
     flight = flight or SyntheticFlight(**kwargs)
-    wheel = WheelState(position=0.0, connected=True)
+    wheel = wheel if wheel is not None else WheelState(position=0.0, connected=True)
     return [(tel, engine.tick(tel, wheel, tel.t)) for tel in flight.stream()]
 
 
@@ -90,6 +96,28 @@ def test_the_wheel_steers_on_the_ground_and_rolls_in_the_air():
     cruise = min(results, key=lambda pair: abs(pair[0].t - 180.0))[1]
     assert cruise.axis.aileron > 0.1
     assert cruise.axis.rudder == 0.0
+
+
+def test_taking_the_rudder_off_the_wheel_keeps_the_road_under_it():
+    """Steering on the pedals should not cost the ground feel.
+
+    Runway rumble, touchdown and brakes key off weight on wheels rather than
+    off the axis blend, so pinning the wheel to ailerons silences the steering
+    forces and leaves what comes up through the airframe untouched.
+    """
+    profiles = ProfileSet()
+    profiles.default.routing.mode = "aileron_only"
+    wheel = WheelState(position=0.25, connected=True)
+    pinned = fly(BridgeEngine(profiles), wheel=wheel)
+    automatic = fly(BridgeEngine(), wheel=wheel)
+
+    def rumble(sortie, seconds):
+        result = at(sortie, seconds)
+        return next((p.magnitude for p in result.force.periodics if p.label == "ground_roll"), 0.0)
+
+    assert rumble(pinned, 70.0) > 0.0
+    assert rumble(pinned, 70.0) == pytest.approx(rumble(automatic, 70.0))
+    assert all(result.axis.rudder == 0.0 for _, result in pinned)
 
 
 def test_runway_rumble_tracks_the_takeoff_roll(sortie):

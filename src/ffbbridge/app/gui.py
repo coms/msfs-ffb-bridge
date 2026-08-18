@@ -37,6 +37,30 @@ COLOUR_WARN = (235, 190, 90)
 COLOUR_BAD = (225, 110, 110)
 COLOUR_DIM = (150, 150, 155)
 
+#: What the single wheel axis can be shared out as, in the order offered.
+#: The second is the wheel with the rudder taken off it, for pedal users.
+AXIS_MODES = (
+    ("Automatic - rudder on the ground, ailerons in the air", "auto"),
+    ("Ailerons only - steering stays on the pedals", "aileron_only"),
+    ("Rudder only - the wheel never rolls", "rudder_only"),
+)
+
+
+def _axis_mode_label(mode: str) -> str:
+    """The radio button's wording for a stored mode."""
+    for label, value in AXIS_MODES:
+        if value == mode:
+            return label
+    return AXIS_MODES[0][0]
+
+
+def _axis_mode_value(label: str) -> str:
+    """The stored mode behind a radio button's wording."""
+    for text, value in AXIS_MODES:
+        if text == label:
+            return value
+    return AXIS_MODES[0][1]
+
 
 class GuiApp:
     """Wires the widgets to the runtime."""
@@ -213,6 +237,23 @@ class GuiApp:
         self._refresh_wheel_travel(
             config.wheel, config.wheel.rotation_deg, config.wheel.soft_lock_deg
         )
+
+        dpg.add_separator()
+        dpg.add_text("Axis")
+        dpg.add_radio_button(
+            tag="routing_mode",
+            items=[label for label, _ in AXIS_MODES],
+            default_value=_axis_mode_label(config.routing.mode),
+            callback=lambda _s, value: self._set_axis_mode(value),
+        )
+        dpg.add_text(
+            "Taking the rudder off the wheel costs you the steering feel that goes with "
+            "it - nosewheel shimmy, scrub, weathervaning - because those are forces in "
+            "the steering. What comes up through the airframe does not change: runway "
+            "rumble, touchdown, brakes, gear and engine all still play.",
+            wrap=900,
+            color=COLOUR_DIM,
+        )
         dpg.add_separator()
 
         with dpg.child_window(height=430):
@@ -334,6 +375,15 @@ class GuiApp:
         dpg.set_value("wheel_soft_lock", soft_lock)
         self._refresh_wheel_travel(wheel, rotation, soft_lock)
 
+    def _set_axis_mode(self, label: str) -> None:
+        """Choose what the wheel axis is, or let the bridge decide."""
+        mode = _axis_mode_value(label)
+        routing = self.runtime.engine.config.routing
+        # The router holds this object and reads the mode every tick, so the
+        # blend glides to the new axis over the usual handoff rather than
+        # snapping to it.
+        self.runtime.post(lambda: setattr(routing, "mode", mode))
+
     def _set_soft_lock(self, value: float) -> None:
         wheel = self.runtime.engine.config.wheel
         soft_lock = clamp(float(value), 0.0, wheel.rotation_deg)
@@ -421,6 +471,7 @@ class GuiApp:
         self.runtime.apply_config(
             profiles.default.with_module_defaults(self.runtime.engine.default_module_settings())
         )
+        dpg.set_value("routing_mode", _axis_mode_label(profiles.default.routing.mode))
         wheel = profiles.default.wheel
         dpg.set_value("wheel_rotation", wheel.rotation_deg)
         dpg.configure_item("wheel_soft_lock", max_value=wheel.rotation_deg)

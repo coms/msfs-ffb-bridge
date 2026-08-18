@@ -141,8 +141,28 @@ are holding does partly become rudder input — so let the wheel come back to
 centre as the wheels touch, which is roughly what you would do anyway.
 
 If you would rather do it by hand, bind a rim button to the override with
-`routing.override_button`, or set `routing.mode` to `aileron_only` or
-`rudder_only` to switch the automation off entirely.
+`routing.override_button`, or pick a fixed axis on the Tuning tab under *Axis*
+— the same thing as setting `routing.mode` to `aileron_only` or `rudder_only`,
+which switches the automation off entirely.
+
+### Flying with pedals
+
+*Ailerons only* is the wheel with the rudder taken off it: the wheel is
+ailerons the whole flight, steering and rudder stay on the pedals, and no
+handoff ever happens. It is pinned from the first tick, so there is no second
+of rudder on the way down from a ground default.
+
+What that costs and what it does not is worth being precise about, because it
+is the usual worry:
+
+- **Silenced**, because they are forces in the steering: nosewheel shimmy,
+  stationary scrub, ground weathervaning, and the ground share of prop wash.
+- **Untouched**, because they key off weight on wheels rather than off the axis
+  blend: runway rumble, touchdown, brakes, gear and engine vibration. Taxiing
+  still feels like the surface you are taxiing on.
+
+Control loading also runs at full weight throughout, since the wheel is the
+ailerons even while you are on the ground.
 
 ## Safety
 

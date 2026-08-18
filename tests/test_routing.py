@@ -212,6 +212,30 @@ def test_aileron_only_mode_never_steers():
     assert router.mode() is AxisMode.AIR
 
 
+def test_aileron_only_mode_never_steers_not_even_on_the_first_tick():
+    """The blend starts pinned, rather than sliding down from a ground default.
+
+    Someone who flies with pedals asked for no rudder from the wheel, and a
+    second of it while the handoff drains is still rudder they did not ask for.
+    """
+    router = make_router(mode="aileron_only")
+    wheel = WheelState(position=0.4)
+    assert router.update(rolling(), wheel, DT).rudder == 0.0
+    assert max(abs(router.update(rolling(), wheel, DT).rudder) for _ in range(120)) == 0.0
+
+    # A reconnect or an aircraft change must not un-pin it either.
+    router.reset(on_ground=True)
+    assert router.update(rolling(), wheel, DT).rudder == 0.0
+
+
+def test_rudder_only_mode_pins_from_the_first_tick_too():
+    router = make_router(mode="rudder_only")
+    wheel = WheelState(position=0.4)
+    assert router.update(airborne(), wheel, DT).aileron == 0.0
+    router.reset(on_ground=False)
+    assert router.update(airborne(), wheel, DT).aileron == 0.0
+
+
 def test_rudder_only_mode_never_rolls():
     router = make_router(mode="rudder_only")
     command = drive(router, airborne(), 4.0, wheel=WheelState(position=0.4))
