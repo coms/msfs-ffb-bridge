@@ -16,7 +16,8 @@ from pathlib import Path
 
 import dearpygui.dearpygui as dpg
 
-from ..core.config import ProfileSet
+from ..core.config import ROTATION_MAX_DEG, ROTATION_MIN_DEG, ProfileSet, WheelConfig
+from ..core.filters import clamp
 from ..core.modules import MODULE_REGISTRY
 from . import paths
 from .bench import BENCH_TESTS
@@ -178,9 +179,43 @@ class GuiApp:
             width=300,
             callback=lambda _s, value: self._set_safety("max_force", value),
         )
+
+        dpg.add_separator()
+        dpg.add_text("Wheel")
+        dpg.add_text(
+            "Rotation has to match what the wheelbase itself is set to - nothing can read "
+            "it back from the device. Both figures are lock-to-lock, the way wheel software "
+            "states them, so a 180 soft lock is 90 degrees either side of centre.",
+            wrap=900,
+            color=COLOUR_DIM,
+        )
+        dpg.add_slider_float(
+            tag="wheel_rotation",
+            label="Wheel rotation (deg, lock-to-lock)",
+            default_value=config.wheel.rotation_deg,
+            min_value=ROTATION_MIN_DEG,
+            max_value=ROTATION_MAX_DEG,
+            format="%.0f",
+            width=300,
+            callback=lambda _s, value: self._set_rotation(value),
+        )
+        dpg.add_slider_float(
+            tag="wheel_soft_lock",
+            label="Soft lock (deg, lock-to-lock; 0 is off)",
+            default_value=config.wheel.soft_lock_deg,
+            min_value=0.0,
+            max_value=config.wheel.rotation_deg,
+            format="%.0f",
+            width=300,
+            callback=lambda _s, value: self._set_soft_lock(value),
+        )
+        dpg.add_text("", tag="wheel_travel", color=COLOUR_DIM)
+        self._refresh_wheel_travel(
+            config.wheel, config.wheel.rotation_deg, config.wheel.soft_lock_deg
+        )
         dpg.add_separator()
 
-        with dpg.child_window(height=520):
+        with dpg.child_window(height=430):
             for module in MODULE_REGISTRY:
                 settings = config.module(module.id)
                 with dpg.collapsing_header(label=module.name, default_open=False):
@@ -278,6 +313,53 @@ class GuiApp:
 
         self.runtime.post(apply)
 
+    def _set_rotation(self, value: float) -> None:
+        """Tell the bridge what the wheelbase is set to.
+
+        The router holds this configuration object, so the change is live: no
+        rebuild, and the soft lock moves with it rather than staying where the
+        old rotation put it.
+        """
+        wheel = self.runtime.engine.config.wheel
+        rotation = clamp(float(value), ROTATION_MIN_DEG, ROTATION_MAX_DEG)
+        soft_lock = min(wheel.soft_lock_deg, rotation)
+
+        def apply() -> None:
+            wheel.rotation_deg = rotation
+            wheel.soft_lock_deg = soft_lock
+
+        self.runtime.post(apply)
+        # A lock wider than the wheel means nothing, so the slider follows it down.
+        dpg.configure_item("wheel_soft_lock", max_value=rotation)
+        dpg.set_value("wheel_soft_lock", soft_lock)
+        self._refresh_wheel_travel(wheel, rotation, soft_lock)
+
+    def _set_soft_lock(self, value: float) -> None:
+        wheel = self.runtime.engine.config.wheel
+        soft_lock = clamp(float(value), 0.0, wheel.rotation_deg)
+        self.runtime.post(lambda: setattr(wheel, "soft_lock_deg", soft_lock))
+        self._refresh_wheel_travel(wheel, wheel.rotation_deg, soft_lock)
+
+    def _refresh_wheel_travel(
+        self, wheel: WheelConfig, rotation: float, soft_lock: float
+    ) -> None:
+        """Say what the two figures add up to at the wheel, in degrees.
+
+        The figures are passed in rather than read back, because the change is
+        posted to the bridge thread and has not landed on `wheel` yet.
+        """
+        half = rotation / 2.0
+        limit = min(soft_lock / rotation, 1.0) if soft_lock > 0.0 and rotation > 0.0 else 0.0
+        air = min(wheel.air_range, limit) if limit > 0.0 else wheel.air_range
+        ground = min(wheel.ground_range, limit) if limit > 0.0 else wheel.ground_range
+        # A lock at the wheel's own travel is no lock at all: there is nothing past it.
+        stop = f"stop at +/-{limit * half:.0f} deg" if 0.0 < limit < 1.0 else "no end stop"
+        dpg.set_value(
+            "wheel_travel",
+            f"{stop}  |  full aileron at +/-{air * half:.0f} deg"
+            f"  |  full rudder at +/-{ground * half:.0f} deg",
+        )
+
     def _module_toggle(self, module_id: str):
         def callback(_sender, value):
             settings = self.runtime.engine.config.module(module_id)
@@ -339,6 +421,11 @@ class GuiApp:
         self.runtime.apply_config(
             profiles.default.with_module_defaults(self.runtime.engine.default_module_settings())
         )
+        wheel = profiles.default.wheel
+        dpg.set_value("wheel_rotation", wheel.rotation_deg)
+        dpg.configure_item("wheel_soft_lock", max_value=wheel.rotation_deg)
+        dpg.set_value("wheel_soft_lock", wheel.soft_lock_deg)
+        self._refresh_wheel_travel(wheel, wheel.rotation_deg, wheel.soft_lock_deg)
 
     def _on_record(self) -> None:
         from datetime import datetime

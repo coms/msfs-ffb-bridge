@@ -39,9 +39,11 @@ Save it as a profile named something like "Flight" so it is one click to switch
 back and forth with your racing settings.
 
 Whatever steering angle you settle on, tell the bridge about it:
-`wheel.rotation_deg` in the profile has to match, because it is the only way a
-setting written in degrees — the soft lock — can mean anything. Nothing can read
-the angle back from the wheelbase.
+`wheel.rotation_deg` has to match, because it is the only way a setting written
+in degrees — the soft lock — can mean anything. Nothing can read the angle back
+from the wheelbase. It is the *Wheel rotation* slider on the Tuning tab, or
+`wheel.rotation_deg` in the profile file; either way, press *Save profile* so it
+is still right next time.
 
 ## Checking it worked
 

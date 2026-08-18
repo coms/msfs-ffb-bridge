@@ -56,6 +56,12 @@ bridge puts the stop back in software:
 }
 ```
 
+Both live on the **Tuning** tab under *Wheel*, where the two sliders take effect
+on the next tick like every other slider, and a line underneath says what they
+add up to in degrees: where the stop is, and where full aileron and full rudder
+arrive. Move rotation and a soft lock wider than the wheel follows it down.
+Nothing is written to disk until *Save profile*.
+
 Both are lock-to-lock, the way wheel software states them. `rotation_deg` is
 what the wheelbase itself is set to and has to match it — nothing can read it
 back from the device. `soft_lock_deg` is the travel the aircraft gets, so 180

@@ -150,6 +150,12 @@ class RoutingConfig:
         )
 
 
+#: Lock-to-lock travel a wheelbase can plausibly be set to, in degrees.
+#: The low end is a rally wheel, the high end is a drift base at full range.
+ROTATION_MIN_DEG = 90.0
+ROTATION_MAX_DEG = 2160.0
+
+
 @dataclass(slots=True)
 class WheelConfig:
     """Calibration of the physical wheel as a flight control."""
@@ -213,7 +219,11 @@ class WheelConfig:
             invert=bool(data.get("invert", base.invert)),
             air_range=clamp(float(data.get("air_range", base.air_range)), 0.05, 1.0),
             ground_range=clamp(float(data.get("ground_range", base.ground_range)), 0.05, 1.0),
-            rotation_deg=clamp(float(data.get("rotation_deg", base.rotation_deg)), 90.0, 2160.0),
+            rotation_deg=clamp(
+                float(data.get("rotation_deg", base.rotation_deg)),
+                ROTATION_MIN_DEG,
+                ROTATION_MAX_DEG,
+            ),
             soft_lock_deg=max(0.0, float(data.get("soft_lock_deg", base.soft_lock_deg))),
         )
 
